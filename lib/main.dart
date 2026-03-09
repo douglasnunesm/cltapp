@@ -1,0 +1,911 @@
+﻿import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const String admobBannerUnitId = 'ca-app-pub-5979475974508131/7828121452';
+
+enum AppSection { calculators, history, settings }
+enum CalcTab { salary, vacation, termination }
+enum TerminationType { withoutCause, employeeResignation, withCause }
+
+class HistoryEntry {
+  final String type;
+  final String title;
+  final double amount;
+  final String detail;
+  final String createdAt;
+
+  HistoryEntry({
+    required this.type,
+    required this.title,
+    required this.amount,
+    required this.detail,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'title': title,
+        'amount': amount,
+        'detail': detail,
+        'createdAt': createdAt,
+      };
+
+  static HistoryEntry fromJson(Map<String, dynamic> json) => HistoryEntry(
+        type: json['type'] ?? '',
+        title: json['title'] ?? '',
+        amount: (json['amount'] ?? 0).toDouble(),
+        detail: json['detail'] ?? '',
+        createdAt: json['createdAt'] ?? '',
+      );
+}
+
+class PtBrCurrencyInputFormatter extends TextInputFormatter {
+  const PtBrCurrencyInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final cleaned = newValue.text.replaceAll(RegExp(r'[^0-9,\.]'), '');
+    if (cleaned.isEmpty) {
+      return const TextEditingValue(text: '');
+    }
+
+    int separatorIndex = -1;
+    for (var i = 0; i < cleaned.length; i++) {
+      final ch = cleaned[i];
+      if (ch == ',' || ch == '.') {
+        separatorIndex = i;
+        break;
+      }
+    }
+
+    var integerPart = separatorIndex >= 0
+        ? cleaned.substring(0, separatorIndex).replaceAll(RegExp(r'[^0-9]'), '')
+        : cleaned.replaceAll(RegExp(r'[^0-9]'), '');
+    final decimalPartRaw = separatorIndex >= 0
+        ? cleaned.substring(separatorIndex + 1).replaceAll(RegExp(r'[^0-9]'), '')
+        : '';
+
+    if (integerPart.isEmpty && separatorIndex < 0) {
+      return const TextEditingValue(text: '');
+    }
+
+    if (integerPart.isEmpty) {
+      integerPart = '0';
+    }
+    integerPart = integerPart.replaceFirst(RegExp(r'^0+(?=\d)'), '');
+    if (integerPart.isEmpty) {
+      integerPart = '0';
+    }
+
+    final withThousands = integerPart.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.');
+    final limitedDecimal = decimalPartRaw.length > 2 ? decimalPartRaw.substring(0, 2) : decimalPartRaw;
+    final hasDecimalSeparator = separatorIndex >= 0;
+    final formatted = hasDecimalSeparator ? '$withThousands,$limitedDecimal' : withThousands;
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
+  runApp(const CltFlutterApp());
+}
+
+class CltFlutterApp extends StatefulWidget {
+  const CltFlutterApp({super.key});
+
+  @override
+  State<CltFlutterApp> createState() => _CltFlutterAppState();
+}
+
+class _CltFlutterAppState extends State<CltFlutterApp> {
+  final NumberFormat brl = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+
+  AppSection section = AppSection.calculators;
+  CalcTab calcTab = CalcTab.salary;
+  TerminationType terminationType = TerminationType.withoutCause;
+
+  bool darkMode = false;
+  bool salarySimplified = true;
+  bool vacationSimplified = true;
+  bool vacationAdvance13 = false;
+  bool terminationSimplified = true;
+  bool employerNoticeIndemnified = true;
+  bool discountEmployeeNotice = false;
+
+  String salaryInput = '';
+  String vacationSalaryInput = '';
+  String vacationDaysInput = '30';
+  String vacationOvertimeInput = '0,00';
+  String vacationDependentsInput = '0';
+
+  String terminationSalaryInput = '';
+  String terminationDaysInput = '30';
+  String termination13Input = '12';
+  String terminationVacationDueInput = '0';
+  String terminationVacationPropInput = '0';
+  String terminationFgtsInput = '0,00';
+  String terminationDependentsInput = '0';
+
+  String? salaryError;
+  String? vacationError;
+  String? terminationError;
+
+  Map<String, double>? salaryResult;
+  Map<String, double>? vacationResult;
+  Map<String, double>? terminationResult;
+
+  List<HistoryEntry> history = [];
+
+  BannerAd? _bannerAd;
+  bool _isBannerReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadState();
+    _loadBanner();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadState() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      darkMode = prefs.getBool('dark_mode') ?? false;
+      salarySimplified = prefs.getBool('salary_simplified') ?? true;
+      vacationSimplified = prefs.getBool('vac_simplified') ?? true;
+      vacationAdvance13 = prefs.getBool('vac_advance_13') ?? false;
+      terminationSimplified = prefs.getBool('term_simplified') ?? true;
+      employerNoticeIndemnified = prefs.getBool('term_notice_indemnified') ?? true;
+      discountEmployeeNotice = prefs.getBool('term_notice_discount') ?? false;
+
+      salaryInput = prefs.getString('salary_input') ?? '';
+      vacationSalaryInput = prefs.getString('vac_salary_input') ?? '';
+      vacationDaysInput = prefs.getString('vac_days_input') ?? '30';
+      vacationOvertimeInput = prefs.getString('vac_overtime_input') ?? '0,00';
+      vacationDependentsInput = prefs.getString('vac_dependents_input') ?? '0';
+
+      terminationSalaryInput = prefs.getString('term_salary_input') ?? '';
+      terminationDaysInput = prefs.getString('term_days_input') ?? '30';
+      termination13Input = prefs.getString('term_m13_input') ?? '12';
+      terminationVacationDueInput = prefs.getString('term_due_input') ?? '0';
+      terminationVacationPropInput = prefs.getString('term_prop_input') ?? '0';
+      terminationFgtsInput = prefs.getString('term_fgts_input') ?? '0,00';
+      terminationDependentsInput = prefs.getString('term_dependents_input') ?? '0';
+
+      final termRaw = prefs.getString('term_type') ?? TerminationType.withoutCause.name;
+      terminationType = TerminationType.values.firstWhere(
+        (e) => e.name == termRaw,
+        orElse: () => TerminationType.withoutCause,
+      );
+
+      final histRaw = prefs.getString('history_items');
+      if (histRaw != null) {
+        final decoded = jsonDecode(histRaw) as List<dynamic>;
+        history = decoded.map((e) => HistoryEntry.fromJson(e as Map<String, dynamic>)).toList();
+      }
+    });
+  }
+
+  Future<void> _saveString(String key, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
+  }
+
+  Future<void> _saveBool(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  Future<void> _saveHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(history.map((e) => e.toJson()).toList());
+    await prefs.setString('history_items', encoded);
+  }
+
+  void _loadBanner() {
+    final ad = BannerAd(
+      adUnitId: admobBannerUnitId,
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (ad) => setState(() => _isBannerReady = true),
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('Erro ao carregar banner: $error');
+        },
+      ),
+    );
+    ad.load();
+    _bannerAd = ad;
+  }
+
+  double? _parseMoney(String input) {
+    final value = input.trim();
+    if (value.isEmpty) return null;
+
+    var normalized = value.replaceAll(RegExp(r'[^0-9,\.]'), '');
+    final lastComma = normalized.lastIndexOf(',');
+    final lastDot = normalized.lastIndexOf('.');
+
+    if (lastComma >= 0 && lastDot >= 0) {
+      if (lastComma > lastDot) {
+        normalized = normalized.replaceAll('.', '').replaceAll(',', '.');
+      } else {
+        normalized = normalized.replaceAll(',', '');
+      }
+    } else if (lastComma >= 0) {
+      normalized = normalized.replaceAll('.', '').replaceAll(',', '.');
+    } else {
+      normalized = normalized.replaceAll(',', '');
+    }
+
+    return double.tryParse(normalized);
+  }
+
+  String _nowLabel() {
+    return DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+  }
+
+  double _calculateInss(double gross) {
+    final capped = gross > 8475.55 ? 8475.55 : gross;
+    final brackets = [
+      [0.0, 1621.00, 0.075],
+      [1621.00, 2902.84, 0.09],
+      [2902.84, 4354.27, 0.12],
+      [4354.27, 8475.55, 0.14],
+    ];
+
+    double total = 0;
+    for (final b in brackets) {
+      final lower = b[0];
+      final upper = b[1];
+      final rate = b[2];
+      final taxable = (capped.clamp(lower, upper) - lower);
+      if (taxable > 0) total += taxable * rate;
+    }
+    return total;
+  }
+
+  double _calculateIrrf({
+    required double grossForReduction,
+    required double taxBase,
+    required int dependents,
+    required bool applySimplified,
+  }) {
+    const simplifiedDiscount = 607.20;
+    const dependentDeduction = 189.59;
+
+    final baseAfterDeps = (taxBase - (dependents * dependentDeduction)).clamp(0, double.infinity);
+    final adjustedBase = applySimplified ? (baseAfterDeps - simplifiedDiscount).clamp(0, double.infinity) : baseAfterDeps;
+
+    double rate = 0;
+    double deduction = 0;
+    if (adjustedBase <= 2428.80) {
+      rate = 0;
+      deduction = 0;
+    } else if (adjustedBase <= 2826.65) {
+      rate = 0.075;
+      deduction = 182.16;
+    } else if (adjustedBase <= 3751.05) {
+      rate = 0.15;
+      deduction = 394.16;
+    } else if (adjustedBase <= 4664.68) {
+      rate = 0.225;
+      deduction = 675.49;
+    } else {
+      rate = 0.275;
+      deduction = 908.73;
+    }
+
+    final irrfByTable = (adjustedBase * rate - deduction).clamp(0, double.infinity);
+
+    double reduction;
+    if (grossForReduction <= 5000) {
+      reduction = 312.89;
+    } else if (grossForReduction <= 7350) {
+      reduction = (978.62 - (0.133145 * grossForReduction)).clamp(0, double.infinity);
+    } else {
+      reduction = 0;
+    }
+
+    return (irrfByTable - reduction).clamp(0, double.infinity);
+  }
+
+  void _addHistory(String type, String title, double amount, String detail) {
+    setState(() {
+      history.insert(
+        0,
+        HistoryEntry(
+          type: type,
+          title: title,
+          amount: amount,
+          detail: detail,
+          createdAt: _nowLabel(),
+        ),
+      );
+      if (history.length > 200) history = history.take(200).toList();
+    });
+    _saveHistory();
+  }
+
+  void _calculateSalary() {
+    final salary = _parseMoney(salaryInput);
+    if (salary == null || salary <= 0) {
+      setState(() {
+        salaryError = 'Informe um salário válido maior que zero.';
+        salaryResult = null;
+      });
+      return;
+    }
+
+    final inss = _calculateInss(salary);
+    final base = (salary - inss).clamp(0, double.infinity).toDouble();
+    final irrf = _calculateIrrf(
+      grossForReduction: salary,
+      taxBase: base,
+      dependents: 0,
+      applySimplified: salarySimplified,
+    );
+    final net = salary - inss - irrf;
+
+    setState(() {
+      salaryError = null;
+      salaryResult = {'gross': salary, 'inss': inss, 'irrf': irrf, 'net': net};
+    });
+
+    _addHistory('Salário', 'Salário líquido', net, 'Bruto ${brl.format(salary)} | INSS ${brl.format(inss)} | IRRF ${brl.format(irrf)}');
+  }
+
+  void _calculateVacation() {
+    final salary = _parseMoney(vacationSalaryInput);
+    final overtime = _parseMoney(vacationOvertimeInput);
+    final days = int.tryParse(vacationDaysInput);
+    final deps = int.tryParse(vacationDependentsInput);
+
+    if (salary == null || salary <= 0 || overtime == null || overtime < 0 || days == null || days < 1 || days > 30 || deps == null || deps < 0) {
+      setState(() {
+        vacationError = 'Revise os campos de férias.';
+        vacationResult = null;
+      });
+      return;
+    }
+
+    final reference = (salary + overtime).clamp(0, double.infinity);
+    final vacationBase = reference * (days / 30.0);
+    final oneThird = vacationBase / 3.0;
+    final taxable = vacationBase + oneThird;
+    final inss = _calculateInss(taxable);
+    final irrf = _calculateIrrf(
+      grossForReduction: taxable,
+      taxBase: taxable - inss,
+      dependents: deps,
+      applySimplified: vacationSimplified,
+    );
+    final ad13 = vacationAdvance13 ? reference / 2.0 : 0.0;
+    final net = taxable + ad13 - inss - irrf;
+
+    setState(() {
+      vacationError = null;
+      vacationResult = {
+        'days': days.toDouble(),
+        'base': vacationBase,
+        'third': oneThird,
+        'ad13': ad13,
+        'inss': inss,
+        'irrf': irrf,
+        'net': net,
+      };
+    });
+
+    _addHistory('Férias', 'Cálculo de férias', net, 'Dias $days | 1/3 ${brl.format(oneThird)} | INSS ${brl.format(inss)}');
+  }
+
+  void _calculateTermination() {
+    final salary = _parseMoney(terminationSalaryInput);
+    final days = int.tryParse(terminationDaysInput);
+    final m13 = int.tryParse(termination13Input) ?? 0;
+    final due = int.tryParse(terminationVacationDueInput);
+    final prop = int.tryParse(terminationVacationPropInput) ?? 0;
+    final fgts = _parseMoney(terminationFgtsInput) ?? 0;
+    final deps = int.tryParse(terminationDependentsInput);
+
+    if (salary == null || salary <= 0 || days == null || due == null || deps == null) {
+      setState(() {
+        terminationError = 'Preencha os campos de rescisão corretamente.';
+        terminationResult = null;
+      });
+      return;
+    }
+
+    final salaryBalance = (salary / 30.0) * days.clamp(0, 30);
+    final vacationDue = (salary * due.clamp(0, 12)) + ((salary * due.clamp(0, 12)) / 3.0);
+    final propBase = salary * (prop.clamp(0, 12) / 12.0);
+    final fullVacationProp = propBase + (propBase / 3.0);
+
+    final noticePay = terminationType == TerminationType.withoutCause && employerNoticeIndemnified ? salary : 0.0;
+    final noticeDiscount = terminationType == TerminationType.employeeResignation && discountEmployeeNotice ? salary : 0.0;
+    final thirteenth = terminationType == TerminationType.withCause ? 0.0 : salary * (m13.clamp(0, 12) / 12.0);
+    final vacationProp = terminationType == TerminationType.withCause ? 0.0 : fullVacationProp;
+    final fgtsFine = terminationType == TerminationType.withoutCause ? (fgts * 0.40) : 0.0;
+
+    final taxBaseGross = salaryBalance + thirteenth;
+    final inss = _calculateInss(taxBaseGross);
+    final irrf = _calculateIrrf(
+      grossForReduction: taxBaseGross,
+      taxBase: taxBaseGross - inss,
+      dependents: deps.clamp(0, 20),
+      applySimplified: terminationSimplified,
+    );
+
+    final net = salaryBalance + noticePay + thirteenth + vacationDue + vacationProp + fgtsFine - inss - irrf - noticeDiscount;
+
+    setState(() {
+      terminationError = null;
+      terminationResult = {
+        'salaryBalance': salaryBalance,
+        'noticePay': noticePay,
+        'noticeDiscount': noticeDiscount,
+        'thirteenth': thirteenth,
+        'vacationDue': vacationDue,
+        'vacationProp': vacationProp,
+        'fgtsFine': fgtsFine,
+        'inss': inss,
+        'irrf': irrf,
+        'net': net,
+      };
+    });
+
+    _addHistory('Rescisão', 'Cálculo de rescisão', net, 'Saldo ${brl.format(salaryBalance)} | 13º ${brl.format(thirteenth)} | FGTS ${brl.format(fgtsFine)}');
+  }
+
+  Widget _buildBanner() {
+    if (_bannerAd == null || !_isBannerReady) return const SizedBox.shrink();
+    return AdWidget(ad: _bannerAd!);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'CLT Brasil',
+      themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
+      darkTheme: ThemeData(useMaterial3: true, brightness: Brightness.dark, colorSchemeSeed: Colors.blue),
+      home: Scaffold(
+        appBar: AppBar(title: const Text('CLT Brasil')),
+        drawer: Drawer(
+          child: Builder(
+            builder: (drawerContext) => ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                const DrawerHeader(
+                  margin: EdgeInsets.zero,
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Text('Menu', style: TextStyle(fontSize: 32)),
+                  ),
+                ),
+                ListTile(
+                  title: const Text('Calculadoras'),
+                  selected: section == AppSection.calculators,
+                  onTap: () {
+                    setState(() => section = AppSection.calculators);
+                    final scaffold = Scaffold.maybeOf(drawerContext);
+                    if (scaffold != null) {
+                      scaffold.closeDrawer();
+                    } else if (Navigator.of(drawerContext).canPop()) {
+                      Navigator.of(drawerContext).pop();
+                    }
+                  },
+                ),
+                ListTile(
+                  title: const Text('Histórico'),
+                  selected: section == AppSection.history,
+                  onTap: () {
+                    setState(() => section = AppSection.history);
+                    final scaffold = Scaffold.maybeOf(drawerContext);
+                    if (scaffold != null) {
+                      scaffold.closeDrawer();
+                    } else if (Navigator.of(drawerContext).canPop()) {
+                      Navigator.of(drawerContext).pop();
+                    }
+                  },
+                ),
+                ListTile(
+                  title: const Text('Configurações'),
+                  selected: section == AppSection.settings,
+                  onTap: () {
+                    setState(() => section = AppSection.settings);
+                    final scaffold = Scaffold.maybeOf(drawerContext);
+                    if (scaffold != null) {
+                      scaffold.closeDrawer();
+                    } else if (Navigator.of(drawerContext).canPop()) {
+                      Navigator.of(drawerContext).pop();
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        bottomNavigationBar: (_bannerAd != null && _isBannerReady)
+            ? SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: Center(
+                    child: SizedBox(
+                      width: _bannerAd!.size.width.toDouble(),
+                      child: _buildBanner(),
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: switch (section) {
+            AppSection.calculators => _buildCalculators(),
+            AppSection.history => _buildHistory(),
+            AppSection.settings => _buildSettings(),
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalculators() {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Salário'),
+                selected: calcTab == CalcTab.salary,
+                onSelected: (_) => setState(() => calcTab = CalcTab.salary),
+              ),
+              ChoiceChip(
+                label: const Text('Férias'),
+                selected: calcTab == CalcTab.vacation,
+                onSelected: (_) => setState(() => calcTab = CalcTab.vacation),
+              ),
+              ChoiceChip(
+                label: const Text('Rescisão'),
+                selected: calcTab == CalcTab.termination,
+                onSelected: (_) => setState(() => calcTab = CalcTab.termination),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (calcTab == CalcTab.salary) _buildSalary(),
+          if (calcTab == CalcTab.vacation) _buildVacation(),
+          if (calcTab == CalcTab.termination) _buildTermination(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSalary() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      TextFormField(
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(labelText: 'Salário bruto mensal', hintText: 'Ex.: 3.500,00'),
+        initialValue: salaryInput,
+        onChanged: (v) {
+          salaryInput = v;
+          _saveString('salary_input', v);
+        },
+      ),
+      SwitchListTile(
+        title: const Text('Aplicar desconto simplificado do IRRF'),
+        value: salarySimplified,
+        onChanged: (v) {
+          setState(() => salarySimplified = v);
+          _saveBool('salary_simplified', v);
+        },
+      ),
+      FilledButton(onPressed: _calculateSalary, child: const Text('Calcular salário líquido')),
+      if (salaryError != null) Text(salaryError!, style: const TextStyle(color: Colors.red)),
+      if (salaryResult != null)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Bruto: ${brl.format(salaryResult!['gross'])}'),
+              Text('INSS: ${brl.format(salaryResult!['inss'])}'),
+              Text('IRRF: ${brl.format(salaryResult!['irrf'])}'),
+              Text('Líquido: ${brl.format(salaryResult!['net'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ]),
+          ),
+        )
+    ]);
+  }
+
+  Widget _buildVacation() {
+    Widget moneyField(String label, String value, String key, void Function(String) setter) {
+      return TextFormField(
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(labelText: label),
+        initialValue: value,
+        onChanged: (v) {
+          setter(v);
+          _saveString(key, v);
+        },
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      moneyField('Salário bruto mensal', vacationSalaryInput, 'vac_salary_input', (v) => vacationSalaryInput = v),
+      TextFormField(
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: const InputDecoration(labelText: 'Quantidade de dias de férias (1 a 30)'),
+        initialValue: vacationDaysInput,
+        onChanged: (v) {
+          vacationDaysInput = v;
+          _saveString('vac_days_input', v);
+        },
+      ),
+      moneyField('Média mensal de horas extras (R\$)', vacationOvertimeInput, 'vac_overtime_input', (v) => vacationOvertimeInput = v),
+      TextFormField(
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: const InputDecoration(labelText: 'Dependentes'),
+        initialValue: vacationDependentsInput,
+        onChanged: (v) {
+          vacationDependentsInput = v;
+          _saveString('vac_dependents_input', v);
+        },
+      ),
+      SwitchListTile(
+        title: const Text('Adiantar 1ª parcela do 13º'),
+        value: vacationAdvance13,
+        onChanged: (v) {
+          setState(() => vacationAdvance13 = v);
+          _saveBool('vac_advance_13', v);
+        },
+      ),
+      SwitchListTile(
+        title: const Text('Aplicar desconto simplificado do IRRF'),
+        value: vacationSimplified,
+        onChanged: (v) {
+          setState(() => vacationSimplified = v);
+          _saveBool('vac_simplified', v);
+        },
+      ),
+      FilledButton(onPressed: _calculateVacation, child: const Text('Calcular férias')),
+      if (vacationError != null) Text(vacationError!, style: const TextStyle(color: Colors.red)),
+      if (vacationResult != null)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Dias: ${vacationResult!['days']!.toInt()}'),
+              Text('Férias: ${brl.format(vacationResult!['base'])}'),
+              Text('1/3: ${brl.format(vacationResult!['third'])}'),
+              Text('Adiantamento 13º: ${brl.format(vacationResult!['ad13'])}'),
+              Text('INSS: ${brl.format(vacationResult!['inss'])}'),
+              Text('IRRF: ${brl.format(vacationResult!['irrf'])}'),
+              Text('Líquido: ${brl.format(vacationResult!['net'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ]),
+          ),
+        )
+    ]);
+  }
+
+  Widget _buildTermination() {
+    String terminationLabel(TerminationType type) {
+      switch (type) {
+        case TerminationType.withoutCause:
+          return 'Sem justa causa';
+        case TerminationType.employeeResignation:
+          return 'Pedido de demissão';
+        case TerminationType.withCause:
+          return 'Justa causa';
+      }
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      DropdownButton<TerminationType>(
+        value: terminationType,
+        isExpanded: true,
+        items: TerminationType.values
+            .map((e) => DropdownMenuItem(value: e, child: Text(terminationLabel(e))))
+            .toList(),
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() => terminationType = v);
+          _saveString('term_type', v.name);
+        },
+      ),
+      _textField(
+        'Salário bruto mensal',
+        terminationSalaryInput,
+        'term_salary_input',
+        (v) => terminationSalaryInput = v,
+        money: true,
+      ),
+      _textField(
+        'Dias trabalhados no mês da saída',
+        terminationDaysInput,
+        'term_days_input',
+        (v) => terminationDaysInput = v,
+        integer: true,
+      ),
+      if (terminationType != TerminationType.withCause)
+        _textField(
+          'Meses para 13º proporcional',
+          termination13Input,
+          'term_m13_input',
+          (v) => termination13Input = v,
+          integer: true,
+        ),
+      _textField(
+        'Quantidade de férias vencidas',
+        terminationVacationDueInput,
+        'term_due_input',
+        (v) => terminationVacationDueInput = v,
+        integer: true,
+      ),
+      if (terminationType != TerminationType.withCause)
+        _textField(
+          'Meses de férias proporcionais',
+          terminationVacationPropInput,
+          'term_prop_input',
+          (v) => terminationVacationPropInput = v,
+          integer: true,
+        ),
+      if (terminationType == TerminationType.withoutCause)
+        _textField(
+          'Saldo FGTS para multa 40% (R\$)',
+          terminationFgtsInput,
+          'term_fgts_input',
+          (v) => terminationFgtsInput = v,
+          money: true,
+        ),
+      _textField(
+        'Dependentes',
+        terminationDependentsInput,
+        'term_dependents_input',
+        (v) => terminationDependentsInput = v,
+        integer: true,
+      ),
+      if (terminationType == TerminationType.withoutCause)
+        SwitchListTile(
+          title: const Text('Aviso prévio indenizado pelo empregador'),
+          value: employerNoticeIndemnified,
+          onChanged: (v) {
+            setState(() => employerNoticeIndemnified = v);
+            _saveBool('term_notice_indemnified', v);
+          },
+        ),
+      if (terminationType == TerminationType.employeeResignation)
+        SwitchListTile(
+          title: const Text('Descontar aviso prévio não cumprido'),
+          value: discountEmployeeNotice,
+          onChanged: (v) {
+            setState(() => discountEmployeeNotice = v);
+            _saveBool('term_notice_discount', v);
+          },
+        ),
+      SwitchListTile(
+        title: const Text('Aplicar desconto simplificado do IRRF'),
+        value: terminationSimplified,
+        onChanged: (v) {
+          setState(() => terminationSimplified = v);
+          _saveBool('term_simplified', v);
+        },
+      ),
+      FilledButton(onPressed: _calculateTermination, child: const Text('Calcular rescisão')),
+      if (terminationError != null) Text(terminationError!, style: const TextStyle(color: Colors.red)),
+      if (terminationResult != null)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Saldo salário: ${brl.format(terminationResult!['salaryBalance'])}'),
+              Text('Aviso prévio: ${brl.format(terminationResult!['noticePay'])}'),
+              Text('Desconto aviso: ${brl.format(terminationResult!['noticeDiscount'])}'),
+              Text('13º proporcional: ${brl.format(terminationResult!['thirteenth'])}'),
+              Text('Férias vencidas + 1/3: ${brl.format(terminationResult!['vacationDue'])}'),
+              Text('Férias proporcionais + 1/3: ${brl.format(terminationResult!['vacationProp'])}'),
+              Text('Multa FGTS: ${brl.format(terminationResult!['fgtsFine'])}'),
+              Text('INSS: ${brl.format(terminationResult!['inss'])}'),
+              Text('IRRF: ${brl.format(terminationResult!['irrf'])}'),
+              Text('Líquido estimado: ${brl.format(terminationResult!['net'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ]),
+          ),
+        )
+    ]);
+  }
+
+  Widget _textField(
+    String label,
+    String value,
+    String key,
+    void Function(String) setter, {
+    bool money = false,
+    bool integer = false,
+  }) {
+    final keyboardType = money
+        ? const TextInputType.numberWithOptions(decimal: true)
+        : TextInputType.number;
+    final formatters = integer
+            ? <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly]
+            : const <TextInputFormatter>[];
+
+    return TextFormField(
+      keyboardType: keyboardType,
+      inputFormatters: formatters,
+      decoration: InputDecoration(labelText: label),
+      initialValue: value,
+      onChanged: (v) {
+        setter(v);
+        _saveString(key, v);
+      },
+    );
+  }
+
+  Widget _buildHistory() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(
+        children: [
+          FilledButton(
+            onPressed: history.isEmpty
+                ? null
+                : () {
+                    setState(() => history = []);
+                    _saveHistory();
+                  },
+            child: const Text('Limpar histórico'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      if (history.isEmpty)
+        const Text('Nenhum cálculo salvo ainda.')
+      else
+        ...history.map((h) => Card(
+              child: ListTile(
+                title: Text(h.title),
+                subtitle: Text('${h.detail}\n${h.createdAt}'),
+                isThreeLine: true,
+                trailing: Text(brl.format(h.amount)),
+              ),
+            )),
+    ]);
+  }
+
+  Widget _buildSettings() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SwitchListTile(
+        title: const Text('Modo escuro'),
+        value: darkMode,
+        onChanged: (v) {
+          setState(() => darkMode = v);
+          _saveBool('dark_mode', v);
+        },
+      )
+    ]);
+  }
+}
