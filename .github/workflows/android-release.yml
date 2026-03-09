@@ -30,14 +30,50 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Restore keystore
+      - name: Restore and validate keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release-keystore.jks
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\r\n ' | base64 --decode > android/app/release-keystore.jks
+
+          TYPE_FROM_SECRET="${{ secrets.KEYSTORE_TYPE }}"
+          DETECTED_TYPE=""
+
+          validate_keystore_type() {
+            local candidate_type="$1"
+            keytool -list \
+              -keystore android/app/release-keystore.jks \
+              -storetype "$candidate_type" \
+              -storepass "${{ secrets.KEYSTORE_PASSWORD }}" >/dev/null 2>&1
+          }
+
+          if [ -n "$TYPE_FROM_SECRET" ]; then
+            if validate_keystore_type "$TYPE_FROM_SECRET"; then
+              DETECTED_TYPE="$TYPE_FROM_SECRET"
+            else
+              echo "::error::KEYSTORE_TYPE informado ($TYPE_FROM_SECRET) nao corresponde ao arquivo ou senha do keystore."
+              exit 1
+            fi
+          else
+            for candidate in JKS PKCS12; do
+              if validate_keystore_type "$candidate"; then
+                DETECTED_TYPE="$candidate"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$DETECTED_TYPE" ]; then
+            echo "::error::Nao foi possivel ler o keystore. Verifique ANDROID_KEYSTORE_BASE64 e KEYSTORE_PASSWORD."
+            exit 1
+          fi
+
+          echo "KEYSTORE_TYPE=$DETECTED_TYPE" >> "$GITHUB_ENV"
+          echo "Keystore valido. Tipo detectado: $DETECTED_TYPE"
 
       - name: Create key.properties
         run: |
           cat > android/key.properties <<EOF
           storeFile=release-keystore.jks
+          storeType=${KEYSTORE_TYPE}
           storePassword=${{ secrets.KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.KEY_ALIAS }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
