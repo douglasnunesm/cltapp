@@ -9,6 +9,7 @@ on:
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    environment: RELEASE-PROD
 
     steps:
       - name: Checkout
