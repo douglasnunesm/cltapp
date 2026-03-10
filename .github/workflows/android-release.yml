@@ -31,6 +31,18 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Restore google-services.json
+        run: |
+          if [ -f android/app/google-services.json ]; then
+            echo "google-services.json ja presente no repositorio."
+          elif [ -n "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" ]; then
+            printf '%s' "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | tr -d '\r\n ' | base64 --decode > android/app/google-services.json
+            echo "google-services.json restaurado via secret."
+          else
+            echo "::error::google-services.json ausente. Adicione o arquivo no repositorio ou secret GOOGLE_SERVICES_JSON_BASE64."
+            exit 1
+          fi
+
       - name: Restore and validate keystore
         run: |
           printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\r\n ' | base64 --decode > android/app/release-keystore.jks

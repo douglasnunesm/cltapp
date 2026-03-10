@@ -1,5 +1,8 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -9,7 +12,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 const String admobBannerUnitId = 'ca-app-pub-5979475974508131/7828121452';
 
 enum AppSection { calculators, history, settings }
+
 enum CalcTab { salary, vacation, termination }
+
 enum TerminationType { withoutCause, employeeResignation, withCause }
 
 class HistoryEntry {
@@ -28,27 +33,30 @@ class HistoryEntry {
   });
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'title': title,
-        'amount': amount,
-        'detail': detail,
-        'createdAt': createdAt,
-      };
+    'type': type,
+    'title': title,
+    'amount': amount,
+    'detail': detail,
+    'createdAt': createdAt,
+  };
 
   static HistoryEntry fromJson(Map<String, dynamic> json) => HistoryEntry(
-        type: json['type'] ?? '',
-        title: json['title'] ?? '',
-        amount: (json['amount'] ?? 0).toDouble(),
-        detail: json['detail'] ?? '',
-        createdAt: json['createdAt'] ?? '',
-      );
+    type: json['type'] ?? '',
+    title: json['title'] ?? '',
+    amount: (json['amount'] ?? 0).toDouble(),
+    detail: json['detail'] ?? '',
+    createdAt: json['createdAt'] ?? '',
+  );
 }
 
 class PtBrCurrencyInputFormatter extends TextInputFormatter {
   const PtBrCurrencyInputFormatter();
 
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final cleaned = newValue.text.replaceAll(RegExp(r'[^0-9,\.]'), '');
     if (cleaned.isEmpty) {
       return const TextEditingValue(text: '');
@@ -63,12 +71,18 @@ class PtBrCurrencyInputFormatter extends TextInputFormatter {
       }
     }
 
-    var integerPart = separatorIndex >= 0
-        ? cleaned.substring(0, separatorIndex).replaceAll(RegExp(r'[^0-9]'), '')
-        : cleaned.replaceAll(RegExp(r'[^0-9]'), '');
-    final decimalPartRaw = separatorIndex >= 0
-        ? cleaned.substring(separatorIndex + 1).replaceAll(RegExp(r'[^0-9]'), '')
-        : '';
+    var integerPart =
+        separatorIndex >= 0
+            ? cleaned
+                .substring(0, separatorIndex)
+                .replaceAll(RegExp(r'[^0-9]'), '')
+            : cleaned.replaceAll(RegExp(r'[^0-9]'), '');
+    final decimalPartRaw =
+        separatorIndex >= 0
+            ? cleaned
+                .substring(separatorIndex + 1)
+                .replaceAll(RegExp(r'[^0-9]'), '')
+            : '';
 
     if (integerPart.isEmpty && separatorIndex < 0) {
       return const TextEditingValue(text: '');
@@ -82,10 +96,17 @@ class PtBrCurrencyInputFormatter extends TextInputFormatter {
       integerPart = '0';
     }
 
-    final withThousands = integerPart.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.');
-    final limitedDecimal = decimalPartRaw.length > 2 ? decimalPartRaw.substring(0, 2) : decimalPartRaw;
+    final withThousands = integerPart.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => '.',
+    );
+    final limitedDecimal =
+        decimalPartRaw.length > 2
+            ? decimalPartRaw.substring(0, 2)
+            : decimalPartRaw;
     final hasDecimalSeparator = separatorIndex >= 0;
-    final formatted = hasDecimalSeparator ? '$withThousands,$limitedDecimal' : withThousands;
+    final formatted =
+        hasDecimalSeparator ? '$withThousands,$limitedDecimal' : withThousands;
 
     return TextEditingValue(
       text: formatted,
@@ -96,8 +117,24 @@ class PtBrCurrencyInputFormatter extends TextInputFormatter {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
+  await _initializeTelemetry();
   runApp(const CltFlutterApp());
+}
+
+Future<void> _initializeTelemetry() async {
+  await MobileAds.instance.initialize();
+
+  try {
+    await Firebase.initializeApp();
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+  } catch (error) {
+    debugPrint('Firebase nao inicializado: $error');
+  }
 }
 
 class CltFlutterApp extends StatefulWidget {
@@ -108,7 +145,11 @@ class CltFlutterApp extends StatefulWidget {
 }
 
 class _CltFlutterAppState extends State<CltFlutterApp> {
-  final NumberFormat brl = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final NumberFormat brl = NumberFormat.currency(
+    locale: 'pt_BR',
+    symbol: 'R\$',
+  );
+  FirebaseAnalytics? _analytics;
 
   AppSection section = AppSection.calculators;
   CalcTab calcTab = CalcTab.salary;
@@ -152,6 +193,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   @override
   void initState() {
     super.initState();
+    _setupAnalytics();
     _loadState();
     _loadBanner();
   }
@@ -170,7 +212,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       vacationSimplified = prefs.getBool('vac_simplified') ?? true;
       vacationAdvance13 = prefs.getBool('vac_advance_13') ?? false;
       terminationSimplified = prefs.getBool('term_simplified') ?? true;
-      employerNoticeIndemnified = prefs.getBool('term_notice_indemnified') ?? true;
+      employerNoticeIndemnified =
+          prefs.getBool('term_notice_indemnified') ?? true;
       discountEmployeeNotice = prefs.getBool('term_notice_discount') ?? false;
 
       salaryInput = prefs.getString('salary_input') ?? '';
@@ -185,18 +228,19 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       terminationVacationDueInput = prefs.getString('term_due_input') ?? '0';
       terminationVacationPropInput = prefs.getString('term_prop_input') ?? '0';
       terminationFgtsInput = prefs.getString('term_fgts_input') ?? '0,00';
-      terminationDependentsInput = prefs.getString('term_dependents_input') ?? '0';
+      terminationDependentsInput =
+          prefs.getString('term_dependents_input') ?? '0';
 
-      final termRaw = prefs.getString('term_type') ?? TerminationType.withoutCause.name;
-      terminationType = TerminationType.values.firstWhere(
-        (e) => e.name == termRaw,
-        orElse: () => TerminationType.withoutCause,
-      );
+      final termRaw = prefs.getString('term_type') ?? 'without_cause';
+      terminationType = _terminationTypeFromKey(termRaw);
 
       final histRaw = prefs.getString('history_items');
       if (histRaw != null) {
         final decoded = jsonDecode(histRaw) as List<dynamic>;
-        history = decoded.map((e) => HistoryEntry.fromJson(e as Map<String, dynamic>)).toList();
+        history =
+            decoded
+                .map((e) => HistoryEntry.fromJson(e as Map<String, dynamic>))
+                .toList();
       }
     });
   }
@@ -232,6 +276,95 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     );
     ad.load();
     _bannerAd = ad;
+  }
+
+  void _setupAnalytics() {
+    try {
+      _analytics = FirebaseAnalytics.instance;
+      _analytics!.setAnalyticsCollectionEnabled(true);
+      _analytics!.logAppOpen();
+    } catch (_) {
+      _analytics = null;
+    }
+  }
+
+  Future<void> _logEvent(
+    String event, [
+    Map<String, Object?> parameters = const {},
+  ]) async {
+    final analytics = _analytics;
+    if (analytics == null) return;
+
+    final payload = <String, Object>{};
+    parameters.forEach((key, value) {
+      if (value is num || value is String) {
+        payload[key] = value as Object;
+      } else if (value is bool) {
+        payload[key] = value ? 1 : 0;
+      } else if (value != null) {
+        payload[key] = value.toString();
+      }
+    });
+
+    try {
+      await analytics.logEvent(name: event, parameters: payload);
+    } catch (_) {}
+  }
+
+  void _setSection(AppSection nextSection) {
+    setState(() => section = nextSection);
+    _logEvent('menu_section_open', {'section': _sectionKey(nextSection)});
+  }
+
+  void _setCalcTab(CalcTab nextTab) {
+    setState(() => calcTab = nextTab);
+    _logEvent('calculator_tab_open', {'tab': _calcTabKey(nextTab)});
+  }
+
+  String _sectionKey(AppSection current) {
+    switch (current) {
+      case AppSection.calculators:
+        return 'calculators';
+      case AppSection.history:
+        return 'history';
+      case AppSection.settings:
+        return 'settings';
+    }
+  }
+
+  String _calcTabKey(CalcTab current) {
+    switch (current) {
+      case CalcTab.salary:
+        return 'salary';
+      case CalcTab.vacation:
+        return 'vacation';
+      case CalcTab.termination:
+        return 'termination';
+    }
+  }
+
+  String _terminationTypeKey(TerminationType current) {
+    switch (current) {
+      case TerminationType.withoutCause:
+        return 'without_cause';
+      case TerminationType.employeeResignation:
+        return 'employee_resignation';
+      case TerminationType.withCause:
+        return 'with_cause';
+    }
+  }
+
+  TerminationType _terminationTypeFromKey(String raw) {
+    switch (raw) {
+      case 'without_cause':
+        return TerminationType.withoutCause;
+      case 'employee_resignation':
+        return TerminationType.employeeResignation;
+      case 'with_cause':
+        return TerminationType.withCause;
+      default:
+        return TerminationType.withoutCause;
+    }
   }
 
   double? _parseMoney(String input) {
@@ -290,8 +423,14 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     const simplifiedDiscount = 607.20;
     const dependentDeduction = 189.59;
 
-    final baseAfterDeps = (taxBase - (dependents * dependentDeduction)).clamp(0, double.infinity);
-    final adjustedBase = applySimplified ? (baseAfterDeps - simplifiedDiscount).clamp(0, double.infinity) : baseAfterDeps;
+    final baseAfterDeps = (taxBase - (dependents * dependentDeduction)).clamp(
+      0,
+      double.infinity,
+    );
+    final adjustedBase =
+        applySimplified
+            ? (baseAfterDeps - simplifiedDiscount).clamp(0, double.infinity)
+            : baseAfterDeps;
 
     double rate = 0;
     double deduction = 0;
@@ -312,13 +451,19 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       deduction = 908.73;
     }
 
-    final irrfByTable = (adjustedBase * rate - deduction).clamp(0, double.infinity);
+    final irrfByTable = (adjustedBase * rate - deduction).clamp(
+      0,
+      double.infinity,
+    );
 
     double reduction;
     if (grossForReduction <= 5000) {
       reduction = 312.89;
     } else if (grossForReduction <= 7350) {
-      reduction = (978.62 - (0.133145 * grossForReduction)).clamp(0, double.infinity);
+      reduction = (978.62 - (0.133145 * grossForReduction)).clamp(
+        0,
+        double.infinity,
+      );
     } else {
       reduction = 0;
     }
@@ -368,7 +513,17 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       salaryResult = {'gross': salary, 'inss': inss, 'irrf': irrf, 'net': net};
     });
 
-    _addHistory('Salário', 'Salário líquido', net, 'Bruto ${brl.format(salary)} | INSS ${brl.format(inss)} | IRRF ${brl.format(irrf)}');
+    _logEvent('calculate_salary', {
+      'gross_salary': salary,
+      'net_salary': net,
+      'simplified_irrf': salarySimplified,
+    });
+    _addHistory(
+      'Salário',
+      'Salário líquido',
+      net,
+      'Bruto ${brl.format(salary)} | INSS ${brl.format(inss)} | IRRF ${brl.format(irrf)}',
+    );
   }
 
   void _calculateVacation() {
@@ -377,7 +532,15 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     final days = int.tryParse(vacationDaysInput);
     final deps = int.tryParse(vacationDependentsInput);
 
-    if (salary == null || salary <= 0 || overtime == null || overtime < 0 || days == null || days < 1 || days > 30 || deps == null || deps < 0) {
+    if (salary == null ||
+        salary <= 0 ||
+        overtime == null ||
+        overtime < 0 ||
+        days == null ||
+        days < 1 ||
+        days > 30 ||
+        deps == null ||
+        deps < 0) {
       setState(() {
         vacationError = 'Revise os campos de férias.';
         vacationResult = null;
@@ -412,7 +575,18 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       };
     });
 
-    _addHistory('Férias', 'Cálculo de férias', net, 'Dias $days | 1/3 ${brl.format(oneThird)} | INSS ${brl.format(inss)}');
+    _logEvent('calculate_vacation', {
+      'gross_salary': salary,
+      'vacation_days': days,
+      'advance_13': vacationAdvance13,
+      'net_value': net,
+    });
+    _addHistory(
+      'Férias',
+      'Cálculo de férias',
+      net,
+      'Dias $days | 1/3 ${brl.format(oneThird)} | INSS ${brl.format(inss)}',
+    );
   }
 
   void _calculateTermination() {
@@ -424,7 +598,11 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     final fgts = _parseMoney(terminationFgtsInput) ?? 0;
     final deps = int.tryParse(terminationDependentsInput);
 
-    if (salary == null || salary <= 0 || days == null || due == null || deps == null) {
+    if (salary == null ||
+        salary <= 0 ||
+        days == null ||
+        due == null ||
+        deps == null) {
       setState(() {
         terminationError = 'Preencha os campos de rescisão corretamente.';
         terminationResult = null;
@@ -433,15 +611,29 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     }
 
     final salaryBalance = (salary / 30.0) * days.clamp(0, 30);
-    final vacationDue = (salary * due.clamp(0, 12)) + ((salary * due.clamp(0, 12)) / 3.0);
+    final vacationDue =
+        (salary * due.clamp(0, 12)) + ((salary * due.clamp(0, 12)) / 3.0);
     final propBase = salary * (prop.clamp(0, 12) / 12.0);
     final fullVacationProp = propBase + (propBase / 3.0);
 
-    final noticePay = terminationType == TerminationType.withoutCause && employerNoticeIndemnified ? salary : 0.0;
-    final noticeDiscount = terminationType == TerminationType.employeeResignation && discountEmployeeNotice ? salary : 0.0;
-    final thirteenth = terminationType == TerminationType.withCause ? 0.0 : salary * (m13.clamp(0, 12) / 12.0);
-    final vacationProp = terminationType == TerminationType.withCause ? 0.0 : fullVacationProp;
-    final fgtsFine = terminationType == TerminationType.withoutCause ? (fgts * 0.40) : 0.0;
+    final noticePay =
+        terminationType == TerminationType.withoutCause &&
+                employerNoticeIndemnified
+            ? salary
+            : 0.0;
+    final noticeDiscount =
+        terminationType == TerminationType.employeeResignation &&
+                discountEmployeeNotice
+            ? salary
+            : 0.0;
+    final thirteenth =
+        terminationType == TerminationType.withCause
+            ? 0.0
+            : salary * (m13.clamp(0, 12) / 12.0);
+    final vacationProp =
+        terminationType == TerminationType.withCause ? 0.0 : fullVacationProp;
+    final fgtsFine =
+        terminationType == TerminationType.withoutCause ? (fgts * 0.40) : 0.0;
 
     final taxBaseGross = salaryBalance + thirteenth;
     final inss = _calculateInss(taxBaseGross);
@@ -452,7 +644,16 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       applySimplified: terminationSimplified,
     );
 
-    final net = salaryBalance + noticePay + thirteenth + vacationDue + vacationProp + fgtsFine - inss - irrf - noticeDiscount;
+    final net =
+        salaryBalance +
+        noticePay +
+        thirteenth +
+        vacationDue +
+        vacationProp +
+        fgtsFine -
+        inss -
+        irrf -
+        noticeDiscount;
 
     setState(() {
       terminationError = null;
@@ -470,7 +671,17 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       };
     });
 
-    _addHistory('Rescisão', 'Cálculo de rescisão', net, 'Saldo ${brl.format(salaryBalance)} | 13º ${brl.format(thirteenth)} | FGTS ${brl.format(fgtsFine)}');
+    _logEvent('calculate_termination', {
+      'termination_type': _terminationTypeKey(terminationType),
+      'gross_salary': salary,
+      'net_value': net,
+    });
+    _addHistory(
+      'Rescisão',
+      'Cálculo de rescisão',
+      net,
+      'Saldo ${brl.format(salaryBalance)} | 13º ${brl.format(thirteenth)} | FGTS ${brl.format(fgtsFine)}',
+    );
   }
 
   Widget _buildBanner() {
@@ -485,79 +696,85 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       title: 'CLT Brasil',
       themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
-      darkTheme: ThemeData(useMaterial3: true, brightness: Brightness.dark, colorSchemeSeed: Colors.blue),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorSchemeSeed: Colors.blue,
+      ),
       home: Scaffold(
         appBar: AppBar(title: const Text('CLT Brasil')),
         drawer: Drawer(
           child: Builder(
-            builder: (drawerContext) => ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                const DrawerHeader(
-                  margin: EdgeInsets.zero,
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 12),
-                  child: Align(
-                    alignment: Alignment.bottomLeft,
-                    child: Text('Menu', style: TextStyle(fontSize: 32)),
-                  ),
+            builder:
+                (drawerContext) => ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    const DrawerHeader(
+                      margin: EdgeInsets.zero,
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, 12),
+                      child: Align(
+                        alignment: Alignment.bottomLeft,
+                        child: Text('Menu', style: TextStyle(fontSize: 32)),
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Calculadoras'),
+                      selected: section == AppSection.calculators,
+                      onTap: () {
+                        _setSection(AppSection.calculators);
+                        final scaffold = Scaffold.maybeOf(drawerContext);
+                        if (scaffold != null) {
+                          scaffold.closeDrawer();
+                        } else if (Navigator.of(drawerContext).canPop()) {
+                          Navigator.of(drawerContext).pop();
+                        }
+                      },
+                    ),
+                    ListTile(
+                      title: const Text('Histórico'),
+                      selected: section == AppSection.history,
+                      onTap: () {
+                        _setSection(AppSection.history);
+                        final scaffold = Scaffold.maybeOf(drawerContext);
+                        if (scaffold != null) {
+                          scaffold.closeDrawer();
+                        } else if (Navigator.of(drawerContext).canPop()) {
+                          Navigator.of(drawerContext).pop();
+                        }
+                      },
+                    ),
+                    ListTile(
+                      title: const Text('Configurações'),
+                      selected: section == AppSection.settings,
+                      onTap: () {
+                        _setSection(AppSection.settings);
+                        final scaffold = Scaffold.maybeOf(drawerContext);
+                        if (scaffold != null) {
+                          scaffold.closeDrawer();
+                        } else if (Navigator.of(drawerContext).canPop()) {
+                          Navigator.of(drawerContext).pop();
+                        }
+                      },
+                    ),
+                  ],
                 ),
-                ListTile(
-                  title: const Text('Calculadoras'),
-                  selected: section == AppSection.calculators,
-                  onTap: () {
-                    setState(() => section = AppSection.calculators);
-                    final scaffold = Scaffold.maybeOf(drawerContext);
-                    if (scaffold != null) {
-                      scaffold.closeDrawer();
-                    } else if (Navigator.of(drawerContext).canPop()) {
-                      Navigator.of(drawerContext).pop();
-                    }
-                  },
-                ),
-                ListTile(
-                  title: const Text('Histórico'),
-                  selected: section == AppSection.history,
-                  onTap: () {
-                    setState(() => section = AppSection.history);
-                    final scaffold = Scaffold.maybeOf(drawerContext);
-                    if (scaffold != null) {
-                      scaffold.closeDrawer();
-                    } else if (Navigator.of(drawerContext).canPop()) {
-                      Navigator.of(drawerContext).pop();
-                    }
-                  },
-                ),
-                ListTile(
-                  title: const Text('Configurações'),
-                  selected: section == AppSection.settings,
-                  onTap: () {
-                    setState(() => section = AppSection.settings);
-                    final scaffold = Scaffold.maybeOf(drawerContext);
-                    if (scaffold != null) {
-                      scaffold.closeDrawer();
-                    } else if (Navigator.of(drawerContext).canPop()) {
-                      Navigator.of(drawerContext).pop();
-                    }
-                  },
-                ),
-              ],
-            ),
           ),
         ),
-        bottomNavigationBar: (_bannerAd != null && _isBannerReady)
-            ? SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: _bannerAd!.size.height.toDouble(),
-                  child: Center(
-                    child: SizedBox(
-                      width: _bannerAd!.size.width.toDouble(),
-                      child: _buildBanner(),
+        bottomNavigationBar:
+            (_bannerAd != null && _isBannerReady)
+                ? SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    height: _bannerAd!.size.height.toDouble(),
+                    child: Center(
+                      child: SizedBox(
+                        width: _bannerAd!.size.width.toDouble(),
+                        child: _buildBanner(),
+                      ),
                     ),
                   ),
-                ),
-              )
-            : null,
+                )
+                : null,
         body: Padding(
           padding: const EdgeInsets.all(16),
           child: switch (section) {
@@ -582,17 +799,17 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
               ChoiceChip(
                 label: const Text('Salário'),
                 selected: calcTab == CalcTab.salary,
-                onSelected: (_) => setState(() => calcTab = CalcTab.salary),
+                onSelected: (_) => _setCalcTab(CalcTab.salary),
               ),
               ChoiceChip(
                 label: const Text('Férias'),
                 selected: calcTab == CalcTab.vacation,
-                onSelected: (_) => setState(() => calcTab = CalcTab.vacation),
+                onSelected: (_) => _setCalcTab(CalcTab.vacation),
               ),
               ChoiceChip(
                 label: const Text('Rescisão'),
                 selected: calcTab == CalcTab.termination,
-                onSelected: (_) => setState(() => calcTab = CalcTab.termination),
+                onSelected: (_) => _setCalcTab(CalcTab.termination),
               ),
             ],
           ),
@@ -606,43 +823,64 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   Widget _buildSalary() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      TextFormField(
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(labelText: 'Salário bruto mensal', hintText: 'Ex.: 3.500,00'),
-        initialValue: salaryInput,
-        onChanged: (v) {
-          salaryInput = v;
-          _saveString('salary_input', v);
-        },
-      ),
-      SwitchListTile(
-        title: const Text('Aplicar desconto simplificado do IRRF'),
-        value: salarySimplified,
-        onChanged: (v) {
-          setState(() => salarySimplified = v);
-          _saveBool('salary_simplified', v);
-        },
-      ),
-      FilledButton(onPressed: _calculateSalary, child: const Text('Calcular salário líquido')),
-      if (salaryError != null) Text(salaryError!, style: const TextStyle(color: Colors.red)),
-      if (salaryResult != null)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Bruto: ${brl.format(salaryResult!['gross'])}'),
-              Text('INSS: ${brl.format(salaryResult!['inss'])}'),
-              Text('IRRF: ${brl.format(salaryResult!['irrf'])}'),
-              Text('Líquido: ${brl.format(salaryResult!['net'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            ]),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Salário bruto mensal',
+            hintText: 'Ex.: 3.500,00',
           ),
-        )
-    ]);
+          initialValue: salaryInput,
+          onChanged: (v) {
+            salaryInput = v;
+            _saveString('salary_input', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('Aplicar desconto simplificado do IRRF'),
+          value: salarySimplified,
+          onChanged: (v) {
+            setState(() => salarySimplified = v);
+            _saveBool('salary_simplified', v);
+          },
+        ),
+        FilledButton(
+          onPressed: _calculateSalary,
+          child: const Text('Calcular salário líquido'),
+        ),
+        if (salaryError != null)
+          Text(salaryError!, style: const TextStyle(color: Colors.red)),
+        if (salaryResult != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Bruto: ${brl.format(salaryResult!['gross'])}'),
+                  Text('INSS: ${brl.format(salaryResult!['inss'])}'),
+                  Text('IRRF: ${brl.format(salaryResult!['irrf'])}'),
+                  Text(
+                    'Líquido: ${brl.format(salaryResult!['net'])}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildVacation() {
-    Widget moneyField(String label, String value, String key, void Function(String) setter) {
+    Widget moneyField(
+      String label,
+      String value,
+      String key,
+      void Function(String) setter,
+    ) {
       return TextFormField(
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(labelText: label),
@@ -654,63 +892,90 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       );
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      moneyField('Salário bruto mensal', vacationSalaryInput, 'vac_salary_input', (v) => vacationSalaryInput = v),
-      TextFormField(
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        decoration: const InputDecoration(labelText: 'Quantidade de dias de férias (1 a 30)'),
-        initialValue: vacationDaysInput,
-        onChanged: (v) {
-          vacationDaysInput = v;
-          _saveString('vac_days_input', v);
-        },
-      ),
-      moneyField('Média mensal de horas extras (R\$)', vacationOvertimeInput, 'vac_overtime_input', (v) => vacationOvertimeInput = v),
-      TextFormField(
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        decoration: const InputDecoration(labelText: 'Dependentes'),
-        initialValue: vacationDependentsInput,
-        onChanged: (v) {
-          vacationDependentsInput = v;
-          _saveString('vac_dependents_input', v);
-        },
-      ),
-      SwitchListTile(
-        title: const Text('Adiantar 1ª parcela do 13º'),
-        value: vacationAdvance13,
-        onChanged: (v) {
-          setState(() => vacationAdvance13 = v);
-          _saveBool('vac_advance_13', v);
-        },
-      ),
-      SwitchListTile(
-        title: const Text('Aplicar desconto simplificado do IRRF'),
-        value: vacationSimplified,
-        onChanged: (v) {
-          setState(() => vacationSimplified = v);
-          _saveBool('vac_simplified', v);
-        },
-      ),
-      FilledButton(onPressed: _calculateVacation, child: const Text('Calcular férias')),
-      if (vacationError != null) Text(vacationError!, style: const TextStyle(color: Colors.red)),
-      if (vacationResult != null)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Dias: ${vacationResult!['days']!.toInt()}'),
-              Text('Férias: ${brl.format(vacationResult!['base'])}'),
-              Text('1/3: ${brl.format(vacationResult!['third'])}'),
-              Text('Adiantamento 13º: ${brl.format(vacationResult!['ad13'])}'),
-              Text('INSS: ${brl.format(vacationResult!['inss'])}'),
-              Text('IRRF: ${brl.format(vacationResult!['irrf'])}'),
-              Text('Líquido: ${brl.format(vacationResult!['net'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            ]),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        moneyField(
+          'Salário bruto mensal',
+          vacationSalaryInput,
+          'vac_salary_input',
+          (v) => vacationSalaryInput = v,
+        ),
+        TextFormField(
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(
+            labelText: 'Quantidade de dias de férias (1 a 30)',
           ),
-        )
-    ]);
+          initialValue: vacationDaysInput,
+          onChanged: (v) {
+            vacationDaysInput = v;
+            _saveString('vac_days_input', v);
+          },
+        ),
+        moneyField(
+          'Média mensal de horas extras (R\$)',
+          vacationOvertimeInput,
+          'vac_overtime_input',
+          (v) => vacationOvertimeInput = v,
+        ),
+        TextFormField(
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(labelText: 'Dependentes'),
+          initialValue: vacationDependentsInput,
+          onChanged: (v) {
+            vacationDependentsInput = v;
+            _saveString('vac_dependents_input', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('Adiantar 1ª parcela do 13º'),
+          value: vacationAdvance13,
+          onChanged: (v) {
+            setState(() => vacationAdvance13 = v);
+            _saveBool('vac_advance_13', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('Aplicar desconto simplificado do IRRF'),
+          value: vacationSimplified,
+          onChanged: (v) {
+            setState(() => vacationSimplified = v);
+            _saveBool('vac_simplified', v);
+          },
+        ),
+        FilledButton(
+          onPressed: _calculateVacation,
+          child: const Text('Calcular férias'),
+        ),
+        if (vacationError != null)
+          Text(vacationError!, style: const TextStyle(color: Colors.red)),
+        if (vacationResult != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Dias: ${vacationResult!['days']!.toInt()}'),
+                  Text('Férias: ${brl.format(vacationResult!['base'])}'),
+                  Text('1/3: ${brl.format(vacationResult!['third'])}'),
+                  Text(
+                    'Adiantamento 13º: ${brl.format(vacationResult!['ad13'])}',
+                  ),
+                  Text('INSS: ${brl.format(vacationResult!['inss'])}'),
+                  Text('IRRF: ${brl.format(vacationResult!['irrf'])}'),
+                  Text(
+                    'Líquido: ${brl.format(vacationResult!['net'])}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildTermination() {
@@ -725,118 +990,151 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       }
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      DropdownButton<TerminationType>(
-        value: terminationType,
-        isExpanded: true,
-        items: TerminationType.values
-            .map((e) => DropdownMenuItem(value: e, child: Text(terminationLabel(e))))
-            .toList(),
-        onChanged: (v) {
-          if (v == null) return;
-          setState(() => terminationType = v);
-          _saveString('term_type', v.name);
-        },
-      ),
-      _textField(
-        'Salário bruto mensal',
-        terminationSalaryInput,
-        'term_salary_input',
-        (v) => terminationSalaryInput = v,
-        money: true,
-      ),
-      _textField(
-        'Dias trabalhados no mês da saída',
-        terminationDaysInput,
-        'term_days_input',
-        (v) => terminationDaysInput = v,
-        integer: true,
-      ),
-      if (terminationType != TerminationType.withCause)
-        _textField(
-          'Meses para 13º proporcional',
-          termination13Input,
-          'term_m13_input',
-          (v) => termination13Input = v,
-          integer: true,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButton<TerminationType>(
+          value: terminationType,
+          isExpanded: true,
+          items:
+              TerminationType.values
+                  .map(
+                    (e) => DropdownMenuItem(
+                      value: e,
+                      child: Text(terminationLabel(e)),
+                    ),
+                  )
+                  .toList(),
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => terminationType = v);
+            _saveString('term_type', _terminationTypeKey(v));
+          },
         ),
-      _textField(
-        'Quantidade de férias vencidas',
-        terminationVacationDueInput,
-        'term_due_input',
-        (v) => terminationVacationDueInput = v,
-        integer: true,
-      ),
-      if (terminationType != TerminationType.withCause)
         _textField(
-          'Meses de férias proporcionais',
-          terminationVacationPropInput,
-          'term_prop_input',
-          (v) => terminationVacationPropInput = v,
-          integer: true,
-        ),
-      if (terminationType == TerminationType.withoutCause)
-        _textField(
-          'Saldo FGTS para multa 40% (R\$)',
-          terminationFgtsInput,
-          'term_fgts_input',
-          (v) => terminationFgtsInput = v,
+          'Salário bruto mensal',
+          terminationSalaryInput,
+          'term_salary_input',
+          (v) => terminationSalaryInput = v,
           money: true,
         ),
-      _textField(
-        'Dependentes',
-        terminationDependentsInput,
-        'term_dependents_input',
-        (v) => terminationDependentsInput = v,
-        integer: true,
-      ),
-      if (terminationType == TerminationType.withoutCause)
-        SwitchListTile(
-          title: const Text('Aviso prévio indenizado pelo empregador'),
-          value: employerNoticeIndemnified,
-          onChanged: (v) {
-            setState(() => employerNoticeIndemnified = v);
-            _saveBool('term_notice_indemnified', v);
-          },
+        _textField(
+          'Dias trabalhados no mês da saída',
+          terminationDaysInput,
+          'term_days_input',
+          (v) => terminationDaysInput = v,
+          integer: true,
         ),
-      if (terminationType == TerminationType.employeeResignation)
-        SwitchListTile(
-          title: const Text('Descontar aviso prévio não cumprido'),
-          value: discountEmployeeNotice,
-          onChanged: (v) {
-            setState(() => discountEmployeeNotice = v);
-            _saveBool('term_notice_discount', v);
-          },
-        ),
-      SwitchListTile(
-        title: const Text('Aplicar desconto simplificado do IRRF'),
-        value: terminationSimplified,
-        onChanged: (v) {
-          setState(() => terminationSimplified = v);
-          _saveBool('term_simplified', v);
-        },
-      ),
-      FilledButton(onPressed: _calculateTermination, child: const Text('Calcular rescisão')),
-      if (terminationError != null) Text(terminationError!, style: const TextStyle(color: Colors.red)),
-      if (terminationResult != null)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Saldo salário: ${brl.format(terminationResult!['salaryBalance'])}'),
-              Text('Aviso prévio: ${brl.format(terminationResult!['noticePay'])}'),
-              Text('Desconto aviso: ${brl.format(terminationResult!['noticeDiscount'])}'),
-              Text('13º proporcional: ${brl.format(terminationResult!['thirteenth'])}'),
-              Text('Férias vencidas + 1/3: ${brl.format(terminationResult!['vacationDue'])}'),
-              Text('Férias proporcionais + 1/3: ${brl.format(terminationResult!['vacationProp'])}'),
-              Text('Multa FGTS: ${brl.format(terminationResult!['fgtsFine'])}'),
-              Text('INSS: ${brl.format(terminationResult!['inss'])}'),
-              Text('IRRF: ${brl.format(terminationResult!['irrf'])}'),
-              Text('Líquido estimado: ${brl.format(terminationResult!['net'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            ]),
+        if (terminationType != TerminationType.withCause)
+          _textField(
+            'Meses para 13º proporcional',
+            termination13Input,
+            'term_m13_input',
+            (v) => termination13Input = v,
+            integer: true,
           ),
-        )
-    ]);
+        _textField(
+          'Quantidade de férias vencidas',
+          terminationVacationDueInput,
+          'term_due_input',
+          (v) => terminationVacationDueInput = v,
+          integer: true,
+        ),
+        if (terminationType != TerminationType.withCause)
+          _textField(
+            'Meses de férias proporcionais',
+            terminationVacationPropInput,
+            'term_prop_input',
+            (v) => terminationVacationPropInput = v,
+            integer: true,
+          ),
+        if (terminationType == TerminationType.withoutCause)
+          _textField(
+            'Saldo FGTS para multa 40% (R\$)',
+            terminationFgtsInput,
+            'term_fgts_input',
+            (v) => terminationFgtsInput = v,
+            money: true,
+          ),
+        _textField(
+          'Dependentes',
+          terminationDependentsInput,
+          'term_dependents_input',
+          (v) => terminationDependentsInput = v,
+          integer: true,
+        ),
+        if (terminationType == TerminationType.withoutCause)
+          SwitchListTile(
+            title: const Text('Aviso prévio indenizado pelo empregador'),
+            value: employerNoticeIndemnified,
+            onChanged: (v) {
+              setState(() => employerNoticeIndemnified = v);
+              _saveBool('term_notice_indemnified', v);
+            },
+          ),
+        if (terminationType == TerminationType.employeeResignation)
+          SwitchListTile(
+            title: const Text('Descontar aviso prévio não cumprido'),
+            value: discountEmployeeNotice,
+            onChanged: (v) {
+              setState(() => discountEmployeeNotice = v);
+              _saveBool('term_notice_discount', v);
+            },
+          ),
+        SwitchListTile(
+          title: const Text('Aplicar desconto simplificado do IRRF'),
+          value: terminationSimplified,
+          onChanged: (v) {
+            setState(() => terminationSimplified = v);
+            _saveBool('term_simplified', v);
+          },
+        ),
+        FilledButton(
+          onPressed: _calculateTermination,
+          child: const Text('Calcular rescisão'),
+        ),
+        if (terminationError != null)
+          Text(terminationError!, style: const TextStyle(color: Colors.red)),
+        if (terminationResult != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Saldo salário: ${brl.format(terminationResult!['salaryBalance'])}',
+                  ),
+                  Text(
+                    'Aviso prévio: ${brl.format(terminationResult!['noticePay'])}',
+                  ),
+                  Text(
+                    'Desconto aviso: ${brl.format(terminationResult!['noticeDiscount'])}',
+                  ),
+                  Text(
+                    '13º proporcional: ${brl.format(terminationResult!['thirteenth'])}',
+                  ),
+                  Text(
+                    'Férias vencidas + 1/3: ${brl.format(terminationResult!['vacationDue'])}',
+                  ),
+                  Text(
+                    'Férias proporcionais + 1/3: ${brl.format(terminationResult!['vacationProp'])}',
+                  ),
+                  Text(
+                    'Multa FGTS: ${brl.format(terminationResult!['fgtsFine'])}',
+                  ),
+                  Text('INSS: ${brl.format(terminationResult!['inss'])}'),
+                  Text('IRRF: ${brl.format(terminationResult!['irrf'])}'),
+                  Text(
+                    'Líquido estimado: ${brl.format(terminationResult!['net'])}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _textField(
@@ -847,10 +1145,12 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     bool money = false,
     bool integer = false,
   }) {
-    final keyboardType = money
-        ? const TextInputType.numberWithOptions(decimal: true)
-        : TextInputType.number;
-    final formatters = integer
+    final keyboardType =
+        money
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.number;
+    final formatters =
+        integer
             ? <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly]
             : const <TextInputFormatter>[];
 
@@ -867,45 +1167,55 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   Widget _buildHistory() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(
-        children: [
-          FilledButton(
-            onPressed: history.isEmpty
-                ? null
-                : () {
-                    setState(() => history = []);
-                    _saveHistory();
-                  },
-            child: const Text('Limpar histórico'),
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      if (history.isEmpty)
-        const Text('Nenhum cálculo salvo ainda.')
-      else
-        ...history.map((h) => Card(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            FilledButton(
+              onPressed:
+                  history.isEmpty
+                      ? null
+                      : () {
+                        setState(() => history = []);
+                        _saveHistory();
+                      },
+              child: const Text('Limpar histórico'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (history.isEmpty)
+          const Text('Nenhum cálculo salvo ainda.')
+        else
+          ...history.map(
+            (h) => Card(
               child: ListTile(
                 title: Text(h.title),
                 subtitle: Text('${h.detail}\n${h.createdAt}'),
                 isThreeLine: true,
                 trailing: Text(brl.format(h.amount)),
               ),
-            )),
-    ]);
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildSettings() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SwitchListTile(
-        title: const Text('Modo escuro'),
-        value: darkMode,
-        onChanged: (v) {
-          setState(() => darkMode = v);
-          _saveBool('dark_mode', v);
-        },
-      )
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          title: const Text('Modo escuro'),
+          value: darkMode,
+          onChanged: (v) {
+            setState(() => darkMode = v);
+            _saveBool('dark_mode', v);
+            _logEvent('toggle_dark_mode', {'enabled': v});
+          },
+        ),
+      ],
+    );
   }
 }
