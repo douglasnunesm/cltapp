@@ -1,4 +1,4 @@
-name: Android Release APK
+name: Android Release and Play Publish
 
 on:
   push:
@@ -81,10 +81,28 @@ jobs:
           EOF
 
       - name: Build release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --build-number ${{ github.run_number }}
+
+      - name: Build release AAB
+        run: flutter build appbundle --release --build-number ${{ github.run_number }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+
+      - name: Publish to Google Play (internal)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.cltapp
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
