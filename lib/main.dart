@@ -190,6 +190,10 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   BannerAd? _bannerAd;
   bool _isBannerReady = false;
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -414,6 +418,50 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     return total;
   }
 
+  String _inssBracketLabel(double grossBase) {
+    if (grossBase <= 1621.00) return 'Faixa 1: até R\$ 1.621,00 (7,5%)';
+    if (grossBase <= 2902.84) {
+      return 'Faixa 2: de R\$ 1.621,01 até R\$ 2.902,84 (9%)';
+    }
+    if (grossBase <= 4354.27) {
+      return 'Faixa 3: de R\$ 2.902,85 até R\$ 4.354,27 (12%)';
+    }
+    if (grossBase <= 8475.55) {
+      return 'Faixa 4: de R\$ 4.354,28 até R\$ 8.475,55 (14%)';
+    }
+    return 'Acima do teto do INSS (R\$ 8.475,55): contribuição limitada ao teto';
+  }
+
+  Map<String, double> _irrfRateAndDeduction(double adjustedBase) {
+    if (adjustedBase <= 2428.80) return {'rate': 0, 'deduction': 0};
+    if (adjustedBase <= 2826.65) return {'rate': 0.075, 'deduction': 182.16};
+    if (adjustedBase <= 3751.05) return {'rate': 0.15, 'deduction': 394.16};
+    if (adjustedBase <= 4664.68) return {'rate': 0.225, 'deduction': 675.49};
+    return {'rate': 0.275, 'deduction': 908.73};
+  }
+
+  String _irrfBracketLabel(double adjustedBase) {
+    if (adjustedBase <= 2428.80) {
+      return 'Faixa isenta: até R\$ 2.428,80 (0%)';
+    }
+    if (adjustedBase <= 2826.65) {
+      return 'Faixa 7,5%: de R\$ 2.428,81 até R\$ 2.826,65';
+    }
+    if (adjustedBase <= 3751.05) {
+      return 'Faixa 15%: de R\$ 2.826,66 até R\$ 3.751,05';
+    }
+    if (adjustedBase <= 4664.68) {
+      return 'Faixa 22,5%: de R\$ 3.751,06 até R\$ 4.664,68';
+    }
+    return 'Faixa 27,5%: acima de R\$ 4.664,68';
+  }
+
+  String _pct(double value) {
+    final pct = value * 100;
+    final isInt = pct % 1 == 0;
+    return '${pct.toStringAsFixed(isInt ? 0 : 1)}%';
+  }
+
   double _calculateIrrf({
     required double grossForReduction,
     required double taxBase,
@@ -489,6 +537,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   void _calculateSalary() {
+    _dismissKeyboard();
     final salary = _parseMoney(salaryInput);
     if (salary == null || salary <= 0) {
       setState(() {
@@ -527,6 +576,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   void _calculateVacation() {
+    _dismissKeyboard();
     final salary = _parseMoney(vacationSalaryInput);
     final overtime = _parseMoney(vacationOvertimeInput);
     final days = int.tryParse(vacationDaysInput);
@@ -590,6 +640,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   void _calculateTermination() {
+    _dismissKeyboard();
     final salary = _parseMoney(terminationSalaryInput);
     final days = int.tryParse(terminationDaysInput);
     final m13 = int.tryParse(termination13Input) ?? 0;
@@ -775,16 +826,183 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                   ),
                 )
                 : null,
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: switch (section) {
-            AppSection.calculators => _buildCalculators(),
-            AppSection.history => _buildHistory(),
-            AppSection.settings => _buildSettings(),
-          },
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: _dismissKeyboard,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: switch (section) {
+              AppSection.calculators => _buildCalculators(),
+              AppSection.history => _buildHistory(),
+              AppSection.settings => _buildSettings(),
+            },
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildResultCard(List<Widget> children) {
+    return SizedBox(
+      width: double.infinity,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: children,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCalculationExplanation({
+    required BuildContext context,
+    required String title,
+    required List<String> steps,
+  }) {
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children:
+                    steps
+                        .asMap()
+                        .entries
+                        .map(
+                          (entry) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text('${entry.key + 1}. ${entry.value}'),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Fechar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<String> _salaryExplanationSteps() {
+    final result = salaryResult;
+    if (result == null) return const [];
+    final gross = (result['gross'] ?? 0).toDouble();
+    final inss = (result['inss'] ?? 0).toDouble();
+    final irrf = (result['irrf'] ?? 0).toDouble();
+    final net = (result['net'] ?? 0).toDouble();
+    final irrfBase = (gross - inss).clamp(0, double.infinity).toDouble();
+    const simplifiedDiscount = 607.20;
+    final adjustedBase =
+        (salarySimplified
+                ? (irrfBase - simplifiedDiscount).clamp(0, double.infinity)
+                : irrfBase)
+            .toDouble();
+    final irrfTable = _irrfRateAndDeduction(adjustedBase);
+    final irrfRate = (irrfTable['rate'] ?? 0);
+    final irrfDeduction = (irrfTable['deduction'] ?? 0);
+
+    return [
+      'Salário bruto informado: ${brl.format(gross)}.',
+      'INSS segue tabela progressiva (7,5% a 14%). Enquadramento do salário: ${_inssBracketLabel(gross)}.',
+      'Desconto total de INSS calculado por faixas: ${brl.format(inss)}.',
+      'Base do IRRF: bruto - INSS = ${brl.format(irrfBase)}.',
+      salarySimplified
+          ? 'Desconto simplificado do IRRF aplicado (R\$ 607,20). Base ajustada: ${brl.format(adjustedBase)}.'
+          : 'Desconto simplificado do IRRF desativado. Base ajustada: ${brl.format(adjustedBase)}.',
+      'Faixa do IRRF: ${_irrfBracketLabel(adjustedBase)}. Alíquota ${_pct(irrfRate)} e parcela a deduzir ${brl.format(irrfDeduction)}.',
+      'IRRF calculado: ${brl.format(irrf)}.',
+      'Salário líquido final: bruto - INSS - IRRF = ${brl.format(net)}.',
+    ];
+  }
+
+  List<String> _vacationExplanationSteps() {
+    final result = vacationResult;
+    if (result == null) return const [];
+    final base = (result['base'] ?? 0).toDouble();
+    final days = (result['days'] ?? 30).toDouble();
+    final third = (result['third'] ?? 0).toDouble();
+    final inss = (result['inss'] ?? 0).toDouble();
+    final irrf = (result['irrf'] ?? 0).toDouble();
+    final ad13 = (result['ad13'] ?? 0).toDouble();
+    final net = (result['net'] ?? 0).toDouble();
+    final reference = days == 0 ? 0 : (base * 30) / days;
+    final irrfBase = (base + third - inss).clamp(0, double.infinity).toDouble();
+    const simplifiedDiscount = 607.20;
+    final adjustedBase =
+        (vacationSimplified
+                ? (irrfBase - simplifiedDiscount).clamp(0, double.infinity)
+                : irrfBase)
+            .toDouble();
+    final irrfTable = _irrfRateAndDeduction(adjustedBase);
+    final irrfRate = (irrfTable['rate'] ?? 0);
+    final irrfDeduction = (irrfTable['deduction'] ?? 0);
+
+    return [
+      'Remuneração de referência (salário + médias): ${brl.format(reference)}.',
+      'Base de férias proporcional aos dias: ${brl.format(base)}.',
+      'Adicional de 1/3 de férias: ${brl.format(third)}.',
+      'INSS progressivo aplicado sobre férias + 1/3. Enquadramento: ${_inssBracketLabel(base + third)}.',
+      'INSS total: ${brl.format(inss)}.',
+      'Base do IRRF nas férias: (férias + 1/3) - INSS = ${brl.format(irrfBase)}.',
+      'Faixa do IRRF: ${_irrfBracketLabel(adjustedBase)}. Alíquota ${_pct(irrfRate)} e dedução ${brl.format(irrfDeduction)}.',
+      'IRRF total: ${brl.format(irrf)}.',
+      vacationAdvance13
+          ? 'Adiantamento da 1ª parcela do 13º incluído: ${brl.format(ad13)}.'
+          : 'Sem adiantamento da 1ª parcela do 13º.',
+      'Valor líquido de férias: ${brl.format(net)}.',
+    ];
+  }
+
+  List<String> _terminationExplanationSteps() {
+    final result = terminationResult;
+    if (result == null) return const [];
+    final salaryBalance = (result['salaryBalance'] ?? 0).toDouble();
+    final thirteenth = (result['thirteenth'] ?? 0).toDouble();
+    final taxBaseGross = salaryBalance + thirteenth;
+    final inss = (result['inss'] ?? 0).toDouble();
+    final irrfBase = (taxBaseGross - inss).clamp(0, double.infinity).toDouble();
+    const simplifiedDiscount = 607.20;
+    final adjustedBase =
+        (terminationSimplified
+                ? (irrfBase - simplifiedDiscount).clamp(0, double.infinity)
+                : irrfBase)
+            .toDouble();
+    final irrfTable = _irrfRateAndDeduction(adjustedBase);
+    final irrfRate = (irrfTable['rate'] ?? 0);
+    final irrfDeduction = (irrfTable['deduction'] ?? 0);
+
+    return [
+      'Tipo de rescisão selecionado: ${_terminationTypeKey(terminationType)}.',
+      'Saldo de salário: ${brl.format(result['salaryBalance'])}.',
+      'Aviso prévio (crédito/desconto): +${brl.format(result['noticePay'])} e -${brl.format(result['noticeDiscount'])}.',
+      '13º proporcional: ${brl.format(result['thirteenth'])}.',
+      'Férias vencidas + 1/3: ${brl.format(result['vacationDue'])}.',
+      'Férias proporcionais + 1/3: ${brl.format(result['vacationProp'])}.',
+      'Multa de FGTS: ${brl.format(result['fgtsFine'])}.',
+      'Base para INSS/IRRF na rescisão (saldo + 13º): ${brl.format(taxBaseGross)}.',
+      'Enquadramento no INSS: ${_inssBracketLabel(taxBaseGross)}. INSS calculado: ${brl.format(inss)}.',
+      'Base do IRRF após INSS: ${brl.format(irrfBase)}.',
+      'Faixa do IRRF: ${_irrfBracketLabel(adjustedBase)}. Alíquota ${_pct(irrfRate)} e dedução ${brl.format(irrfDeduction)}.',
+      'IRRF calculado: ${brl.format(result['irrf'])}.',
+      'Líquido estimado final: ${brl.format(result['net'])}.',
+    ];
   }
 
   Widget _buildCalculators() {
@@ -853,21 +1071,30 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
         if (salaryError != null)
           Text(salaryError!, style: const TextStyle(color: Colors.red)),
         if (salaryResult != null)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Bruto: ${brl.format(salaryResult!['gross'])}'),
-                  Text('INSS: ${brl.format(salaryResult!['inss'])}'),
-                  Text('IRRF: ${brl.format(salaryResult!['irrf'])}'),
-                  Text(
-                    'Líquido: ${brl.format(salaryResult!['net'])}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+          _buildResultCard([
+            Text('Bruto: ${brl.format(salaryResult!['gross'])}'),
+            Text('INSS: ${brl.format(salaryResult!['inss'])}'),
+            Text('IRRF: ${brl.format(salaryResult!['irrf'])}'),
+            Text(
+              'Líquido: ${brl.format(salaryResult!['net'])}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ]),
+        if (salaryResult != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder:
+                  (buttonContext) => OutlinedButton.icon(
+                    onPressed:
+                        () => _showCalculationExplanation(
+                          context: buttonContext,
+                          title: 'Como calculamos o salario liquido',
+                          steps: _salaryExplanationSteps(),
+                        ),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Como calculamos'),
                   ),
-                ],
-              ),
             ),
           ),
       ],
@@ -952,26 +1179,33 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
         if (vacationError != null)
           Text(vacationError!, style: const TextStyle(color: Colors.red)),
         if (vacationResult != null)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Dias: ${vacationResult!['days']!.toInt()}'),
-                  Text('Férias: ${brl.format(vacationResult!['base'])}'),
-                  Text('1/3: ${brl.format(vacationResult!['third'])}'),
-                  Text(
-                    'Adiantamento 13º: ${brl.format(vacationResult!['ad13'])}',
+          _buildResultCard([
+            Text('Dias: ${vacationResult!['days']!.toInt()}'),
+            Text('Férias: ${brl.format(vacationResult!['base'])}'),
+            Text('1/3: ${brl.format(vacationResult!['third'])}'),
+            Text('Adiantamento 13º: ${brl.format(vacationResult!['ad13'])}'),
+            Text('INSS: ${brl.format(vacationResult!['inss'])}'),
+            Text('IRRF: ${brl.format(vacationResult!['irrf'])}'),
+            Text(
+              'Líquido: ${brl.format(vacationResult!['net'])}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ]),
+        if (vacationResult != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder:
+                  (buttonContext) => OutlinedButton.icon(
+                    onPressed:
+                        () => _showCalculationExplanation(
+                          context: buttonContext,
+                          title: 'Como calculamos as ferias',
+                          steps: _vacationExplanationSteps(),
+                        ),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Como calculamos'),
                   ),
-                  Text('INSS: ${brl.format(vacationResult!['inss'])}'),
-                  Text('IRRF: ${brl.format(vacationResult!['irrf'])}'),
-                  Text(
-                    'Líquido: ${brl.format(vacationResult!['net'])}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
             ),
           ),
       ],
@@ -1096,41 +1330,48 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
         if (terminationError != null)
           Text(terminationError!, style: const TextStyle(color: Colors.red)),
         if (terminationResult != null)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Saldo salário: ${brl.format(terminationResult!['salaryBalance'])}',
+          _buildResultCard([
+            Text(
+              'Saldo salário: ${brl.format(terminationResult!['salaryBalance'])}',
+            ),
+            Text(
+              'Aviso prévio: ${brl.format(terminationResult!['noticePay'])}',
+            ),
+            Text(
+              'Desconto aviso: ${brl.format(terminationResult!['noticeDiscount'])}',
+            ),
+            Text(
+              '13º proporcional: ${brl.format(terminationResult!['thirteenth'])}',
+            ),
+            Text(
+              'Férias vencidas + 1/3: ${brl.format(terminationResult!['vacationDue'])}',
+            ),
+            Text(
+              'Férias proporcionais + 1/3: ${brl.format(terminationResult!['vacationProp'])}',
+            ),
+            Text('Multa FGTS: ${brl.format(terminationResult!['fgtsFine'])}'),
+            Text('INSS: ${brl.format(terminationResult!['inss'])}'),
+            Text('IRRF: ${brl.format(terminationResult!['irrf'])}'),
+            Text(
+              'Líquido estimado: ${brl.format(terminationResult!['net'])}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ]),
+        if (terminationResult != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder:
+                  (buttonContext) => OutlinedButton.icon(
+                    onPressed:
+                        () => _showCalculationExplanation(
+                          context: buttonContext,
+                          title: 'Como calculamos a rescisao',
+                          steps: _terminationExplanationSteps(),
+                        ),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Como calculamos'),
                   ),
-                  Text(
-                    'Aviso prévio: ${brl.format(terminationResult!['noticePay'])}',
-                  ),
-                  Text(
-                    'Desconto aviso: ${brl.format(terminationResult!['noticeDiscount'])}',
-                  ),
-                  Text(
-                    '13º proporcional: ${brl.format(terminationResult!['thirteenth'])}',
-                  ),
-                  Text(
-                    'Férias vencidas + 1/3: ${brl.format(terminationResult!['vacationDue'])}',
-                  ),
-                  Text(
-                    'Férias proporcionais + 1/3: ${brl.format(terminationResult!['vacationProp'])}',
-                  ),
-                  Text(
-                    'Multa FGTS: ${brl.format(terminationResult!['fgtsFine'])}',
-                  ),
-                  Text('INSS: ${brl.format(terminationResult!['inss'])}'),
-                  Text('IRRF: ${brl.format(terminationResult!['irrf'])}'),
-                  Text(
-                    'Líquido estimado: ${brl.format(terminationResult!['net'])}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
             ),
           ),
       ],
@@ -1185,19 +1426,28 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           ],
         ),
         const SizedBox(height: 12),
-        if (history.isEmpty)
-          const Text('Nenhum cálculo salvo ainda.')
-        else
-          ...history.map(
-            (h) => Card(
-              child: ListTile(
-                title: Text(h.title),
-                subtitle: Text('${h.detail}\n${h.createdAt}'),
-                isThreeLine: true,
-                trailing: Text(brl.format(h.amount)),
-              ),
-            ),
-          ),
+        Expanded(
+          child:
+              history.isEmpty
+                  ? const Align(
+                    alignment: Alignment.topLeft,
+                    child: Text('Nenhum cálculo salvo ainda.'),
+                  )
+                  : ListView.builder(
+                    itemCount: history.length,
+                    itemBuilder: (context, index) {
+                      final h = history[index];
+                      return Card(
+                        child: ListTile(
+                          title: Text(h.title),
+                          subtitle: Text('${h.detail}\n${h.createdAt}'),
+                          isThreeLine: true,
+                          trailing: Text(brl.format(h.amount)),
+                        ),
+                      );
+                    },
+                  ),
+        ),
       ],
     );
   }
