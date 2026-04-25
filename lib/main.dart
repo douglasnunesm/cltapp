@@ -759,6 +759,156 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     return AdWidget(ad: _bannerAd!);
   }
 
+  int get _sectionIndex {
+    switch (section) {
+      case AppSection.calculators:
+        return 0;
+      case AppSection.history:
+        return 1;
+      case AppSection.settings:
+        return 2;
+    }
+  }
+
+  void _setSectionByIndex(int index) {
+    switch (index) {
+      case 0:
+        _setSection(AppSection.calculators);
+        break;
+      case 1:
+        _setSection(AppSection.history);
+        break;
+      case 2:
+        _setSection(AppSection.settings);
+        break;
+    }
+  }
+
+  Widget _buildCurrentSection() {
+    return switch (section) {
+      AppSection.calculators => _buildCalculators(),
+      AppSection.history => _buildHistory(),
+      AppSection.settings => _buildSettings(),
+    };
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Builder(
+        builder:
+            (drawerContext) => ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                const DrawerHeader(
+                  margin: EdgeInsets.zero,
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Text('Menu', style: TextStyle(fontSize: 32)),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calculate_outlined),
+                  title: const Text('Calculadoras'),
+                  selected: section == AppSection.calculators,
+                  onTap: () {
+                    _setSection(AppSection.calculators);
+                    final scaffold = Scaffold.maybeOf(drawerContext);
+                    if (scaffold != null) {
+                      scaffold.closeDrawer();
+                    } else if (Navigator.of(drawerContext).canPop()) {
+                      Navigator.of(drawerContext).pop();
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.history_outlined),
+                  title: const Text('Histórico'),
+                  selected: section == AppSection.history,
+                  onTap: () {
+                    _setSection(AppSection.history);
+                    final scaffold = Scaffold.maybeOf(drawerContext);
+                    if (scaffold != null) {
+                      scaffold.closeDrawer();
+                    } else if (Navigator.of(drawerContext).canPop()) {
+                      Navigator.of(drawerContext).pop();
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.settings_outlined),
+                  title: const Text('Configurações'),
+                  selected: section == AppSection.settings,
+                  onTap: () {
+                    _setSection(AppSection.settings);
+                    final scaffold = Scaffold.maybeOf(drawerContext);
+                    if (scaffold != null) {
+                      scaffold.closeDrawer();
+                    } else if (Navigator.of(drawerContext).canPop()) {
+                      Navigator.of(drawerContext).pop();
+                    }
+                  },
+                ),
+              ],
+            ),
+      ),
+    );
+  }
+
+  Widget _buildNavigationRail() {
+    return NavigationRail(
+      selectedIndex: _sectionIndex,
+      onDestinationSelected: _setSectionByIndex,
+      labelType: NavigationRailLabelType.all,
+      minWidth: 92,
+      leading: const Padding(
+        padding: EdgeInsets.only(top: 12, bottom: 20),
+        child: Icon(Icons.check_circle_outline, size: 32),
+      ),
+      destinations: const [
+        NavigationRailDestination(
+          icon: Icon(Icons.calculate_outlined),
+          selectedIcon: Icon(Icons.calculate),
+          label: Text('Calculadoras'),
+        ),
+        NavigationRailDestination(
+          icon: Icon(Icons.history_outlined),
+          selectedIcon: Icon(Icons.history),
+          label: Text('Histórico'),
+        ),
+        NavigationRailDestination(
+          icon: Icon(Icons.settings_outlined),
+          selectedIcon: Icon(Icons.settings),
+          label: Text('Configurações'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResponsiveBody({
+    required bool wideLayout,
+    required double maxContentWidth,
+    required double horizontalPadding,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: _dismissKeyboard,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: wideLayout ? 24 : 16,
+        ),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxContentWidth),
+            child: _buildCurrentSection(),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -771,92 +921,62 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
         brightness: Brightness.dark,
         colorSchemeSeed: Colors.blue,
       ),
-      home: Scaffold(
-        appBar: AppBar(title: const Text('CLT Brasil')),
-        drawer: Drawer(
-          child: Builder(
-            builder:
-                (drawerContext) => ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    const DrawerHeader(
-                      margin: EdgeInsets.zero,
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 12),
-                      child: Align(
-                        alignment: Alignment.bottomLeft,
-                        child: Text('Menu', style: TextStyle(fontSize: 32)),
-                      ),
-                    ),
-                    ListTile(
-                      title: const Text('Calculadoras'),
-                      selected: section == AppSection.calculators,
-                      onTap: () {
-                        _setSection(AppSection.calculators);
-                        final scaffold = Scaffold.maybeOf(drawerContext);
-                        if (scaffold != null) {
-                          scaffold.closeDrawer();
-                        } else if (Navigator.of(drawerContext).canPop()) {
-                          Navigator.of(drawerContext).pop();
-                        }
-                      },
-                    ),
-                    ListTile(
-                      title: const Text('Histórico'),
-                      selected: section == AppSection.history,
-                      onTap: () {
-                        _setSection(AppSection.history);
-                        final scaffold = Scaffold.maybeOf(drawerContext);
-                        if (scaffold != null) {
-                          scaffold.closeDrawer();
-                        } else if (Navigator.of(drawerContext).canPop()) {
-                          Navigator.of(drawerContext).pop();
-                        }
-                      },
-                    ),
-                    ListTile(
-                      title: const Text('Configurações'),
-                      selected: section == AppSection.settings,
-                      onTap: () {
-                        _setSection(AppSection.settings);
-                        final scaffold = Scaffold.maybeOf(drawerContext);
-                        if (scaffold != null) {
-                          scaffold.closeDrawer();
-                        } else if (Navigator.of(drawerContext).canPop()) {
-                          Navigator.of(drawerContext).pop();
-                        }
-                      },
-                    ),
-                  ],
-                ),
-          ),
-        ),
-        bottomNavigationBar:
-            (_bannerAd != null && _isBannerReady)
-                ? SafeArea(
-                  top: false,
-                  child: SizedBox(
-                    height: _bannerAd!.size.height.toDouble(),
-                    child: Center(
+      home: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final wideLayout = width >= 1000;
+          final tabletLayout = width >= 700 && width < 1000;
+          final horizontalPadding =
+              wideLayout
+                  ? 40.0
+                  : tabletLayout
+                  ? 24.0
+                  : 16.0;
+          final maxContentWidth =
+              wideLayout
+                  ? 1040.0
+                  : tabletLayout
+                  ? 760.0
+                  : double.infinity;
+          final body = _buildResponsiveBody(
+            wideLayout: wideLayout,
+            maxContentWidth: maxContentWidth,
+            horizontalPadding: horizontalPadding,
+          );
+
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('CLT Brasil'),
+              centerTitle: wideLayout,
+            ),
+            drawer: wideLayout ? null : _buildDrawer(),
+            bottomNavigationBar:
+                (_bannerAd != null && _isBannerReady)
+                    ? SafeArea(
+                      top: false,
                       child: SizedBox(
-                        width: _bannerAd!.size.width.toDouble(),
-                        child: _buildBanner(),
+                        height: _bannerAd!.size.height.toDouble(),
+                        child: Center(
+                          child: SizedBox(
+                            width: _bannerAd!.size.width.toDouble(),
+                            child: _buildBanner(),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                )
-                : null,
-        body: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: _dismissKeyboard,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: switch (section) {
-              AppSection.calculators => _buildCalculators(),
-              AppSection.history => _buildHistory(),
-              AppSection.settings => _buildSettings(),
-            },
-          ),
-        ),
+                    )
+                    : null,
+            body:
+                wideLayout
+                    ? Row(
+                      children: [
+                        _buildNavigationRail(),
+                        const VerticalDivider(width: 1),
+                        Expanded(child: body),
+                      ],
+                    )
+                    : body,
+          );
+        },
       ),
     );
   }
