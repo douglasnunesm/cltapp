@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -122,16 +123,21 @@ void main() async {
 }
 
 Future<void> _initializeTelemetry() async {
-  await MobileAds.instance.initialize();
+  if (!kIsWeb) {
+    await MobileAds.instance.initialize();
+  }
 
   try {
     await Firebase.initializeApp();
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
-    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+    if (!kIsWeb) {
+      FlutterError.onError =
+          FirebaseCrashlytics.instance.recordFlutterFatalError;
+      WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+    }
   } catch (error) {
     debugPrint('Firebase nao inicializado: $error');
   }
@@ -266,6 +272,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   void _loadBanner() {
+    if (kIsWeb) return;
+
     final ad = BannerAd(
       adUnitId: admobBannerUnitId,
       request: const AdRequest(),
@@ -392,6 +400,23 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     }
 
     return double.tryParse(normalized);
+  }
+
+  int _parseIntOr(String input, int fallback) {
+    try {
+      return int.parse(input);
+    } on FormatException {
+      return fallback;
+    }
+  }
+
+  double _mapDouble(
+    Map<String, double> values,
+    String key, [
+    double fallback = 0,
+  ]) {
+    final dynamic value = values[key];
+    return value is double ? value : fallback;
   }
 
   String _nowLabel() {
@@ -579,17 +604,15 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     _dismissKeyboard();
     final salary = _parseMoney(vacationSalaryInput);
     final overtime = _parseMoney(vacationOvertimeInput);
-    final days = int.tryParse(vacationDaysInput);
-    final deps = int.tryParse(vacationDependentsInput);
+    final days = _parseIntOr(vacationDaysInput, 0);
+    final deps = _parseIntOr(vacationDependentsInput, -1);
 
     if (salary == null ||
         salary <= 0 ||
         overtime == null ||
         overtime < 0 ||
-        days == null ||
         days < 1 ||
         days > 30 ||
-        deps == null ||
         deps < 0) {
       setState(() {
         vacationError = 'Revise os campos de férias.';
@@ -642,18 +665,14 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   void _calculateTermination() {
     _dismissKeyboard();
     final salary = _parseMoney(terminationSalaryInput);
-    final days = int.tryParse(terminationDaysInput);
-    final m13 = int.tryParse(termination13Input) ?? 0;
-    final due = int.tryParse(terminationVacationDueInput);
-    final prop = int.tryParse(terminationVacationPropInput) ?? 0;
+    final days = _parseIntOr(terminationDaysInput, -1);
+    final m13 = _parseIntOr(termination13Input, 0);
+    final due = _parseIntOr(terminationVacationDueInput, -1);
+    final prop = _parseIntOr(terminationVacationPropInput, 0);
     final fgts = _parseMoney(terminationFgtsInput) ?? 0;
-    final deps = int.tryParse(terminationDependentsInput);
+    final deps = _parseIntOr(terminationDependentsInput, -1);
 
-    if (salary == null ||
-        salary <= 0 ||
-        days == null ||
-        due == null ||
-        deps == null) {
+    if (salary == null || salary <= 0 || days < 0 || due < 0 || deps < 0) {
       setState(() {
         terminationError = 'Preencha os campos de rescisão corretamente.';
         terminationResult = null;
@@ -903,10 +922,10 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   List<String> _salaryExplanationSteps() {
     final result = salaryResult;
     if (result == null) return const [];
-    final gross = (result['gross'] ?? 0).toDouble();
-    final inss = (result['inss'] ?? 0).toDouble();
-    final irrf = (result['irrf'] ?? 0).toDouble();
-    final net = (result['net'] ?? 0).toDouble();
+    final gross = _mapDouble(result, 'gross');
+    final inss = _mapDouble(result, 'inss');
+    final irrf = _mapDouble(result, 'irrf');
+    final net = _mapDouble(result, 'net');
     final irrfBase = (gross - inss).clamp(0, double.infinity).toDouble();
     const simplifiedDiscount = 607.20;
     final adjustedBase =
@@ -915,8 +934,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                 : irrfBase)
             .toDouble();
     final irrfTable = _irrfRateAndDeduction(adjustedBase);
-    final irrfRate = (irrfTable['rate'] ?? 0);
-    final irrfDeduction = (irrfTable['deduction'] ?? 0);
+    final irrfRate = _mapDouble(irrfTable, 'rate');
+    final irrfDeduction = _mapDouble(irrfTable, 'deduction');
 
     return [
       'Salário bruto informado: ${brl.format(gross)}.',
@@ -935,13 +954,13 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   List<String> _vacationExplanationSteps() {
     final result = vacationResult;
     if (result == null) return const [];
-    final base = (result['base'] ?? 0).toDouble();
-    final days = (result['days'] ?? 30).toDouble();
-    final third = (result['third'] ?? 0).toDouble();
-    final inss = (result['inss'] ?? 0).toDouble();
-    final irrf = (result['irrf'] ?? 0).toDouble();
-    final ad13 = (result['ad13'] ?? 0).toDouble();
-    final net = (result['net'] ?? 0).toDouble();
+    final base = _mapDouble(result, 'base');
+    final days = _mapDouble(result, 'days', 30);
+    final third = _mapDouble(result, 'third');
+    final inss = _mapDouble(result, 'inss');
+    final irrf = _mapDouble(result, 'irrf');
+    final ad13 = _mapDouble(result, 'ad13');
+    final net = _mapDouble(result, 'net');
     final reference = days == 0 ? 0 : (base * 30) / days;
     final irrfBase = (base + third - inss).clamp(0, double.infinity).toDouble();
     const simplifiedDiscount = 607.20;
@@ -951,8 +970,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                 : irrfBase)
             .toDouble();
     final irrfTable = _irrfRateAndDeduction(adjustedBase);
-    final irrfRate = (irrfTable['rate'] ?? 0);
-    final irrfDeduction = (irrfTable['deduction'] ?? 0);
+    final irrfRate = _mapDouble(irrfTable, 'rate');
+    final irrfDeduction = _mapDouble(irrfTable, 'deduction');
 
     return [
       'Remuneração de referência (salário + médias): ${brl.format(reference)}.',
@@ -973,10 +992,10 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   List<String> _terminationExplanationSteps() {
     final result = terminationResult;
     if (result == null) return const [];
-    final salaryBalance = (result['salaryBalance'] ?? 0).toDouble();
-    final thirteenth = (result['thirteenth'] ?? 0).toDouble();
+    final salaryBalance = _mapDouble(result, 'salaryBalance');
+    final thirteenth = _mapDouble(result, 'thirteenth');
     final taxBaseGross = salaryBalance + thirteenth;
-    final inss = (result['inss'] ?? 0).toDouble();
+    final inss = _mapDouble(result, 'inss');
     final irrfBase = (taxBaseGross - inss).clamp(0, double.infinity).toDouble();
     const simplifiedDiscount = 607.20;
     final adjustedBase =
@@ -985,8 +1004,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                 : irrfBase)
             .toDouble();
     final irrfTable = _irrfRateAndDeduction(adjustedBase);
-    final irrfRate = (irrfTable['rate'] ?? 0);
-    final irrfDeduction = (irrfTable['deduction'] ?? 0);
+    final irrfRate = _mapDouble(irrfTable, 'rate');
+    final irrfDeduction = _mapDouble(irrfTable, 'deduction');
 
     return [
       'Tipo de rescisão selecionado: ${_terminationTypeKey(terminationType)}.',
@@ -1180,7 +1199,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           Text(vacationError!, style: const TextStyle(color: Colors.red)),
         if (vacationResult != null)
           _buildResultCard([
-            Text('Dias: ${vacationResult!['days']!.toInt()}'),
+            Text('Dias: ${_mapDouble(vacationResult!, 'days').toInt()}'),
             Text('Férias: ${brl.format(vacationResult!['base'])}'),
             Text('1/3: ${brl.format(vacationResult!['third'])}'),
             Text('Adiantamento 13º: ${brl.format(vacationResult!['ad13'])}'),

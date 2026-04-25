@@ -1,11 +1,11 @@
 {
-    "name": "cltapp",
-    "short_name": "cltapp",
+    "name": "CLT Brasil",
+    "short_name": "CLT Brasil",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Calculadora trabalhista CLT para salario liquido, ferias e rescisao.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
