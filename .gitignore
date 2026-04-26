@@ -33,9 +33,11 @@ migrate_working_dir/
 .pub/
 /build/
 /release/
+/releases/
 .fakegit/
 /android/local.properties
 /android/key.properties
+/android/app/google-services.json
 *.jks
 
 # Symbolication related
