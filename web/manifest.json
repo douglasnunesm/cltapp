@@ -1,11 +1,11 @@
 {
-    "name": "CLT Brasil",
+    "name": "CLT Brasil - Calculadora Trabalhista",
     "short_name": "CLT Brasil",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Calculadora trabalhista CLT para salario liquido, ferias e rescisao.",
+    "description": "Calculadora CLT gratuita para salário líquido, férias, rescisão, INSS e IRRF.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

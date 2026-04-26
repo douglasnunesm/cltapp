@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://douglasnunesm.github.io/cltapp/sitemap.xml

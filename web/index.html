@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,7 +18,12 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Calculadora trabalhista CLT para salario liquido, ferias e rescisao.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Calculadora CLT gratuita para salário líquido, férias, rescisão, INSS e IRRF. Simule valores trabalhistas de forma simples pelo navegador.">
+  <meta name="keywords" content="calculadora CLT, cálculo trabalhista, salário líquido, cálculo de férias, cálculo de rescisão, INSS, IRRF, Brasil">
+  <meta name="robots" content="index, follow">
+  <meta name="author" content="CLT Brasil">
+  <link rel="canonical" href="https://douglasnunesm.github.io/cltapp/">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -26,13 +31,80 @@
   <meta name="apple-mobile-web-app-title" content="CLT Brasil">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="CLT Brasil">
+  <meta property="og:title" content="CLT Brasil - Calculadora de Salário Líquido, Férias e Rescisão">
+  <meta property="og:description" content="Calcule salário líquido, férias e rescisão CLT com descontos de INSS e IRRF. Ferramenta gratuita para trabalhadores brasileiros.">
+  <meta property="og:url" content="https://douglasnunesm.github.io/cltapp/">
+  <meta property="og:image" content="https://douglasnunesm.github.io/cltapp/icons/Icon-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="CLT Brasil - Calculadora Trabalhista">
+  <meta name="twitter:description" content="Simule salário líquido, férias, rescisão, INSS e IRRF pelo navegador.">
+  <meta name="twitter:image" content="https://douglasnunesm.github.io/cltapp/icons/Icon-512.png">
+
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>CLT Brasil</title>
+  <title>CLT Brasil - Calculadora CLT de Salário Líquido, Férias e Rescisão</title>
   <link rel="manifest" href="manifest.json">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "CLT Brasil",
+      "alternateName": "Calculadora CLT Brasil",
+      "url": "https://douglasnunesm.github.io/cltapp/",
+      "description": "Calculadora trabalhista CLT para simular salário líquido, férias, rescisão, INSS e IRRF.",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web, Android",
+      "inLanguage": "pt-BR",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "BRL"
+      },
+      "featureList": [
+        "Cálculo de salário líquido CLT",
+        "Cálculo de férias CLT",
+        "Cálculo de rescisão CLT",
+        "Estimativa de descontos de INSS e IRRF",
+        "Histórico de cálculos trabalhistas"
+      ],
+      "publisher": {
+        "@type": "Organization",
+        "name": "CLT Brasil"
+      }
+    }
+  </script>
 </head>
 <body>
+  <noscript>
+    <main>
+      <h1>CLT Brasil - Calculadora trabalhista CLT</h1>
+      <p>
+        O CLT Brasil é uma calculadora gratuita para simular salário líquido,
+        férias e rescisão de trabalhadores no regime CLT no Brasil.
+      </p>
+      <h2>Calculadora de salário líquido</h2>
+      <p>
+        Informe o salário bruto mensal para estimar descontos de INSS, IRRF e
+        o valor líquido aproximado.
+      </p>
+      <h2>Calculadora de férias CLT</h2>
+      <p>
+        Simule férias com quantidade de dias, adicional de um terço,
+        adiantamento do 13º, médias de horas extras e dependentes.
+      </p>
+      <h2>Calculadora de rescisão CLT</h2>
+      <p>
+        Estime valores de rescisão, saldo de salário, 13º proporcional,
+        férias proporcionais, FGTS, INSS e IRRF.
+      </p>
+      <p>Ative o JavaScript para usar a calculadora interativa.</p>
+    </main>
+  </noscript>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
