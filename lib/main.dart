@@ -26,6 +26,8 @@ enum CalcTab {
 
 enum TerminationType { withoutCause, employeeResignation, withCause }
 
+enum PjComparisonMode { compareBoth, cltToPj, pjToClt }
+
 class HistoryEntry {
   final String type;
   final String title;
@@ -176,6 +178,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   bool terminationSimplified = true;
   bool employerNoticeIndemnified = true;
   bool discountEmployeeNotice = false;
+  PjComparisonMode pjComparisonMode = PjComparisonMode.compareBoth;
 
   String salaryInput = '';
   String salaryDependentsInput = '0';
@@ -265,6 +268,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       employerNoticeIndemnified =
           prefs.getBool('term_notice_indemnified') ?? true;
       discountEmployeeNotice = prefs.getBool('term_notice_discount') ?? false;
+      pjComparisonMode = _pjComparisonModeFromKey(
+        prefs.getString('pj_comparison_mode') ?? 'compare_both',
+      );
 
       salaryInput = prefs.getString('salary_input') ?? '';
       vacationSalaryInput = prefs.getString('vac_salary_input') ?? '';
@@ -461,6 +467,51 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     }
   }
 
+  String _pjComparisonModeKey(PjComparisonMode current) {
+    switch (current) {
+      case PjComparisonMode.compareBoth:
+        return 'compare_both';
+      case PjComparisonMode.cltToPj:
+        return 'clt_to_pj';
+      case PjComparisonMode.pjToClt:
+        return 'pj_to_clt';
+    }
+  }
+
+  PjComparisonMode _pjComparisonModeFromKey(String raw) {
+    switch (raw) {
+      case 'clt_to_pj':
+        return PjComparisonMode.cltToPj;
+      case 'pj_to_clt':
+        return PjComparisonMode.pjToClt;
+      case 'compare_both':
+      default:
+        return PjComparisonMode.compareBoth;
+    }
+  }
+
+  String _pjComparisonModeLabel(PjComparisonMode mode) {
+    switch (mode) {
+      case PjComparisonMode.compareBoth:
+        return 'Comparar valores';
+      case PjComparisonMode.cltToPj:
+        return 'CLT -> PJ necessário';
+      case PjComparisonMode.pjToClt:
+        return 'PJ -> CLT equivalente';
+    }
+  }
+
+  int _pjComparisonModeCode(PjComparisonMode mode) {
+    switch (mode) {
+      case PjComparisonMode.compareBoth:
+        return 0;
+      case PjComparisonMode.cltToPj:
+        return 1;
+      case PjComparisonMode.pjToClt:
+        return 2;
+    }
+  }
+
   double? _parseMoney(String input) {
     final value = input.trim();
     if (value.isEmpty) return null;
@@ -499,6 +550,97 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   ]) {
     final dynamic value = values[key];
     return value is double ? value : fallback;
+  }
+
+  Map<String, double> _calculateCltMonthlyEquivalent({
+    required double salary,
+    required double benefits,
+  }) {
+    final inss = _calculateInss(salary);
+    final irrf = _calculateIrrf(
+      grossForReduction: salary,
+      taxBase: salary - inss,
+      dependents: 0,
+      applySimplified: true,
+    );
+    final net = salary - inss - irrf + benefits;
+    final fgts = salary * 0.08;
+    final monthlyEquivalent = net + (salary / 12.0) + fgts;
+
+    return {
+      'salary': salary,
+      'inss': inss,
+      'irrf': irrf,
+      'benefits': benefits,
+      'net': net,
+      'fgts': fgts,
+      'monthlyEquivalent': monthlyEquivalent,
+    };
+  }
+
+  Map<String, double> _calculatePjMonthlyNet({
+    required double revenue,
+    required double taxPercent,
+    required double costs,
+    required double vacationReservePercent,
+    required double thirteenthReservePercent,
+  }) {
+    final tax = revenue * (taxPercent / 100.0);
+    final vacationReserve = revenue * (vacationReservePercent / 100.0);
+    final thirteenthReserve = revenue * (thirteenthReservePercent / 100.0);
+    final net = revenue - tax - costs - vacationReserve - thirteenthReserve;
+
+    return {
+      'revenue': revenue,
+      'taxPercent': taxPercent,
+      'tax': tax,
+      'costs': costs,
+      'vacationReserve': vacationReserve,
+      'thirteenthReserve': thirteenthReserve,
+      'net': net,
+    };
+  }
+
+  double _pjNetRate({
+    required double taxPercent,
+    required double vacationReservePercent,
+    required double thirteenthReservePercent,
+  }) {
+    return 1 -
+        ((taxPercent + vacationReservePercent + thirteenthReservePercent) /
+            100.0);
+  }
+
+  double _findCltSalaryForEquivalent({
+    required double targetEquivalent,
+    required double benefits,
+  }) {
+    var low = 0.0;
+    var high = targetEquivalent.clamp(1000.0, double.infinity).toDouble();
+
+    while (_mapDouble(
+          _calculateCltMonthlyEquivalent(salary: high, benefits: benefits),
+          'monthlyEquivalent',
+        ) <
+        targetEquivalent) {
+      high *= 2;
+      if (high > 1000000) break;
+    }
+
+    for (var i = 0; i < 80; i++) {
+      final mid = (low + high) / 2;
+      final equivalent = _mapDouble(
+        _calculateCltMonthlyEquivalent(salary: mid, benefits: benefits),
+        'monthlyEquivalent',
+      );
+      if (equivalent < targetEquivalent) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    return high;
   }
 
   String _nowLabel() {
@@ -873,10 +1015,11 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       pjThirteenthReservePercentInput,
     );
 
-    if (cltSalary == null ||
-        cltSalary <= 0 ||
-        pjRevenue == null ||
-        pjRevenue <= 0 ||
+    final requiresClt = pjComparisonMode != PjComparisonMode.pjToClt;
+    final requiresPj = pjComparisonMode != PjComparisonMode.cltToPj;
+
+    if ((requiresClt && (cltSalary == null || cltSalary <= 0)) ||
+        (requiresPj && (pjRevenue == null || pjRevenue <= 0)) ||
         taxPercent == null ||
         taxPercent < 0 ||
         costs == null ||
@@ -894,35 +1037,100 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       return;
     }
 
-    final inss = _calculateInss(cltSalary);
-    final cltIrrf = _calculateIrrf(
-      grossForReduction: cltSalary,
-      taxBase: cltSalary - inss,
-      dependents: 0,
-      applySimplified: true,
+    final netRate = _pjNetRate(
+      taxPercent: taxPercent,
+      vacationReservePercent: vacationReservePercent,
+      thirteenthReservePercent: thirteenthReservePercent,
     );
-    final cltNet = cltSalary - inss - cltIrrf + benefits;
-    final cltFgts = cltSalary * 0.08;
-    final cltMonthlyEquivalent = cltNet + (cltSalary / 12.0) + cltFgts;
+    if (netRate <= 0) {
+      setState(() {
+        pjComparisonError =
+            'A soma de impostos e reservas precisa ser menor que 100%.';
+        pjComparisonResult = null;
+      });
+      return;
+    }
 
-    final pjTax = pjRevenue * (taxPercent / 100.0);
-    final vacationReserve = pjRevenue * (vacationReservePercent / 100.0);
-    final thirteenthReserve = pjRevenue * (thirteenthReservePercent / 100.0);
-    final pjNet =
-        pjRevenue - pjTax - costs - vacationReserve - thirteenthReserve;
+    late final Map<String, double> clt;
+    late final Map<String, double> pj;
+    double requiredPjRevenue = 0;
+    double equivalentCltSalary = 0;
+
+    switch (pjComparisonMode) {
+      case PjComparisonMode.compareBoth:
+        clt = _calculateCltMonthlyEquivalent(
+          salary: cltSalary!,
+          benefits: benefits,
+        );
+        pj = _calculatePjMonthlyNet(
+          revenue: pjRevenue!,
+          taxPercent: taxPercent,
+          costs: costs,
+          vacationReservePercent: vacationReservePercent,
+          thirteenthReservePercent: thirteenthReservePercent,
+        );
+        break;
+      case PjComparisonMode.cltToPj:
+        clt = _calculateCltMonthlyEquivalent(
+          salary: cltSalary!,
+          benefits: benefits,
+        );
+        requiredPjRevenue =
+            ((_mapDouble(clt, 'monthlyEquivalent') + costs) / netRate)
+                .clamp(0, double.infinity)
+                .toDouble();
+        pj = _calculatePjMonthlyNet(
+          revenue: requiredPjRevenue,
+          taxPercent: taxPercent,
+          costs: costs,
+          vacationReservePercent: vacationReservePercent,
+          thirteenthReservePercent: thirteenthReservePercent,
+        );
+        break;
+      case PjComparisonMode.pjToClt:
+        pj = _calculatePjMonthlyNet(
+          revenue: pjRevenue!,
+          taxPercent: taxPercent,
+          costs: costs,
+          vacationReservePercent: vacationReservePercent,
+          thirteenthReservePercent: thirteenthReservePercent,
+        );
+        equivalentCltSalary = _findCltSalaryForEquivalent(
+          targetEquivalent: _mapDouble(pj, 'net'),
+          benefits: benefits,
+        );
+        clt = _calculateCltMonthlyEquivalent(
+          salary: equivalentCltSalary,
+          benefits: benefits,
+        );
+        break;
+    }
+
+    final cltSalaryValue = _mapDouble(clt, 'salary');
+    final cltInss = _mapDouble(clt, 'inss');
+    final cltIrrf = _mapDouble(clt, 'irrf');
+    final cltNet = _mapDouble(clt, 'net');
+    final cltFgts = _mapDouble(clt, 'fgts');
+    final cltMonthlyEquivalent = _mapDouble(clt, 'monthlyEquivalent');
+    final pjRevenueValue = _mapDouble(pj, 'revenue');
+    final pjTax = _mapDouble(pj, 'tax');
+    final vacationReserve = _mapDouble(pj, 'vacationReserve');
+    final thirteenthReserve = _mapDouble(pj, 'thirteenthReserve');
+    final pjNet = _mapDouble(pj, 'net');
     final difference = pjNet - cltMonthlyEquivalent;
 
     setState(() {
       pjComparisonError = null;
       pjComparisonResult = {
-        'cltSalary': cltSalary,
-        'cltInss': inss,
+        'mode': _pjComparisonModeCode(pjComparisonMode).toDouble(),
+        'cltSalary': cltSalaryValue,
+        'cltInss': cltInss,
         'cltIrrf': cltIrrf,
         'cltBenefits': benefits,
         'cltNet': cltNet,
         'cltFgts': cltFgts,
         'cltMonthlyEquivalent': cltMonthlyEquivalent,
-        'pjRevenue': pjRevenue,
+        'pjRevenue': pjRevenueValue,
         'pjTaxPercent': taxPercent,
         'pjTax': pjTax,
         'pjCosts': costs,
@@ -930,12 +1138,15 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
         'thirteenthReserve': thirteenthReserve,
         'pjNet': pjNet,
         'difference': difference,
+        'requiredPjRevenue': requiredPjRevenue,
+        'equivalentCltSalary': equivalentCltSalary,
       };
     });
 
     _logEvent('calculate_pj_comparison', {
-      'clt_salary': cltSalary,
-      'pj_revenue': pjRevenue,
+      'mode': _pjComparisonModeKey(pjComparisonMode),
+      'clt_salary': cltSalaryValue,
+      'pj_revenue': pjRevenueValue,
       'pj_net': pjNet,
       'difference': difference,
     });
@@ -1633,8 +1844,11 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     final thirteenthReserve = _mapDouble(result, 'thirteenthReserve');
     final pjNet = _mapDouble(result, 'pjNet');
     final difference = _mapDouble(result, 'difference');
+    final modeCode = _mapDouble(result, 'mode').toInt();
+    final requiredPjRevenue = _mapDouble(result, 'requiredPjRevenue');
+    final equivalentCltSalary = _mapDouble(result, 'equivalentCltSalary');
 
-    return [
+    final steps = [
       'CLT: salário bruto informado ${brl.format(cltSalary)}.',
       'Descontos CLT estimados: INSS ${brl.format(cltInss)} e IRRF ${brl.format(cltIrrf)}. Benefícios mensais somados: ${brl.format(cltBenefits)}.',
       'Líquido CLT mensal com benefícios: ${brl.format(cltNet)}.',
@@ -1648,6 +1862,20 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           : 'Nesta simulação, PJ fica abaixo do CLT equivalente em ${brl.format(difference.abs())} por mês.',
       'Use essa comparação como estimativa. Regime tributário, CNAE, pró-labore, contabilidade, benefícios, férias e risco de contrato podem mudar o resultado real.',
     ];
+
+    if (modeCode == 1) {
+      steps.insert(
+        4,
+        'Para compensar esse CLT, o faturamento PJ bruto necessário é ${brl.format(requiredPjRevenue)}.',
+      );
+    } else if (modeCode == 2) {
+      steps.insert(
+        0,
+        'Para compensar esse PJ, o salário CLT bruto equivalente estimado é ${brl.format(equivalentCltSalary)}.',
+      );
+    }
+
+    return steps;
   }
 
   Widget _buildCalculators() {
@@ -2288,6 +2516,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   Widget _buildPjComparison() {
+    final needsClt = pjComparisonMode != PjComparisonMode.pjToClt;
+    final needsPj = pjComparisonMode != PjComparisonMode.cltToPj;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2295,8 +2526,37 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           'Comparação estimada. Ajuste impostos, custos e reservas conforme seu caso.',
         ),
         const SizedBox(height: 8),
+        SegmentedButton<PjComparisonMode>(
+          segments: const [
+            ButtonSegment(
+              value: PjComparisonMode.compareBoth,
+              label: Text('Comparar'),
+            ),
+            ButtonSegment(
+              value: PjComparisonMode.cltToPj,
+              label: Text('CLT -> PJ'),
+            ),
+            ButtonSegment(
+              value: PjComparisonMode.pjToClt,
+              label: Text('PJ -> CLT'),
+            ),
+          ],
+          selected: {pjComparisonMode},
+          onSelectionChanged: (selection) {
+            final next = selection.first;
+            setState(() {
+              pjComparisonMode = next;
+              pjComparisonResult = null;
+              pjComparisonError = null;
+            });
+            _saveString('pj_comparison_mode', _pjComparisonModeKey(next));
+          },
+        ),
+        const SizedBox(height: 12),
         _textField(
-          'Salário CLT bruto mensal',
+          needsClt
+              ? 'Salário CLT bruto mensal'
+              : 'Salário CLT bruto mensal (calculado)',
           pjCltSalaryInput,
           'pj_clt_salary_input',
           (v) => pjCltSalaryInput = v,
@@ -2310,7 +2570,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           money: true,
         ),
         _textField(
-          'Faturamento PJ mensal',
+          needsPj
+              ? 'Faturamento PJ mensal'
+              : 'Faturamento PJ mensal (calculado)',
           pjMonthlyRevenueInput,
           'pj_monthly_revenue_input',
           (v) => pjMonthlyRevenueInput = v,
@@ -2344,11 +2606,24 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           (v) => pjThirteenthReservePercentInput = v,
           money: true,
         ),
-        _primaryButton('Comparar CLT x PJ', _calculatePjComparison),
+        _primaryButton(
+          _pjComparisonModeLabel(pjComparisonMode),
+          _calculatePjComparison,
+        ),
         if (pjComparisonError != null)
           Text(pjComparisonError!, style: const TextStyle(color: Colors.red)),
         if (pjComparisonResult != null)
           _buildResultCard([
+            if (_mapDouble(pjComparisonResult!, 'mode').toInt() == 1)
+              Text(
+                'PJ bruto necessário: ${brl.format(pjComparisonResult!['requiredPjRevenue'])}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            if (_mapDouble(pjComparisonResult!, 'mode').toInt() == 2)
+              Text(
+                'CLT bruto equivalente: ${brl.format(pjComparisonResult!['equivalentCltSalary'])}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
             Text(
               'CLT líquido + benefícios: ${brl.format(pjComparisonResult!['cltNet'])}',
             ),
