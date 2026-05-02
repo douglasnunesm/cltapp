@@ -14,7 +14,15 @@ const String admobBannerUnitId = 'ca-app-pub-5979475974508131/7828121452';
 
 enum AppSection { calculators, history, settings }
 
-enum CalcTab { salary, vacation, termination, fgts, salaryAdjustment }
+enum CalcTab {
+  salary,
+  vacation,
+  termination,
+  fgts,
+  salaryAdjustment,
+  hourlyRate,
+  pjComparison,
+}
 
 enum TerminationType { withoutCause, employeeResignation, withCause }
 
@@ -171,8 +179,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
 
   String salaryInput = '';
   String salaryDependentsInput = '0';
-  String salaryOvertime50Input = '0,00';
-  String salaryOvertime100Input = '0,00';
+  String salaryOvertime50HoursInput = '0';
+  String salaryOvertime100HoursInput = '0';
   String salaryHealthDiscountInput = '0,00';
   String vacationSalaryInput = '';
   String vacationDaysInput = '30';
@@ -196,17 +204,32 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   String adjustmentPercentInput = '';
   String adjustmentFixedValueInput = '0,00';
 
+  String hourlySalaryInput = '';
+  String hourlyMonthlyHoursInput = '220';
+
+  String pjCltSalaryInput = '';
+  String pjMonthlyRevenueInput = '';
+  String pjTaxPercentInput = '15';
+  String pjMonthlyCostsInput = '0,00';
+  String pjBenefitsInput = '0,00';
+  String pjVacationReservePercentInput = '8,33';
+  String pjThirteenthReservePercentInput = '8,33';
+
   String? salaryError;
   String? vacationError;
   String? terminationError;
   String? fgtsError;
   String? adjustmentError;
+  String? hourlyRateError;
+  String? pjComparisonError;
 
   Map<String, double>? salaryResult;
   Map<String, double>? vacationResult;
   Map<String, double>? terminationResult;
   Map<String, double>? fgtsResult;
   Map<String, double>? adjustmentResult;
+  Map<String, double>? hourlyRateResult;
+  Map<String, double>? pjComparisonResult;
 
   List<HistoryEntry> history = [];
 
@@ -259,8 +282,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           prefs.getString('term_dependents_input') ?? '0';
 
       salaryDependentsInput = prefs.getString('salary_dependents_input') ?? '0';
-      salaryOvertime50Input = prefs.getString('salary_ot50_input') ?? '0,00';
-      salaryOvertime100Input = prefs.getString('salary_ot100_input') ?? '0,00';
+      salaryOvertime50HoursInput = prefs.getString('salary_ot50_input') ?? '0';
+      salaryOvertime100HoursInput =
+          prefs.getString('salary_ot100_input') ?? '0';
       salaryHealthDiscountInput =
           prefs.getString('salary_health_discount_input') ?? '0,00';
 
@@ -276,6 +300,20 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           prefs.getString('adjustment_percent_input') ?? '';
       adjustmentFixedValueInput =
           prefs.getString('adjustment_fixed_value_input') ?? '0,00';
+
+      hourlySalaryInput = prefs.getString('hourly_salary_input') ?? '';
+      hourlyMonthlyHoursInput =
+          prefs.getString('hourly_monthly_hours_input') ?? '220';
+
+      pjCltSalaryInput = prefs.getString('pj_clt_salary_input') ?? '';
+      pjMonthlyRevenueInput = prefs.getString('pj_monthly_revenue_input') ?? '';
+      pjTaxPercentInput = prefs.getString('pj_tax_percent_input') ?? '15';
+      pjMonthlyCostsInput = prefs.getString('pj_monthly_costs_input') ?? '0,00';
+      pjBenefitsInput = prefs.getString('pj_benefits_input') ?? '0,00';
+      pjVacationReservePercentInput =
+          prefs.getString('pj_vacation_reserve_percent_input') ?? '8,33';
+      pjThirteenthReservePercentInput =
+          prefs.getString('pj_thirteenth_reserve_percent_input') ?? '8,33';
 
       final termRaw = prefs.getString('term_type') ?? 'without_cause';
       terminationType = _terminationTypeFromKey(termRaw);
@@ -392,6 +430,10 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
         return 'fgts';
       case CalcTab.salaryAdjustment:
         return 'salary_adjustment';
+      case CalcTab.hourlyRate:
+        return 'hourly_rate';
+      case CalcTab.pjComparison:
+        return 'pj_comparison';
     }
   }
 
@@ -604,16 +646,16 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   void _calculateSalary() {
     _dismissKeyboard();
     final salary = _parseMoney(salaryInput);
-    final overtime50 = _parseMoney(salaryOvertime50Input);
-    final overtime100 = _parseMoney(salaryOvertime100Input);
+    final overtime50Hours = _parseMoney(salaryOvertime50HoursInput);
+    final overtime100Hours = _parseMoney(salaryOvertime100HoursInput);
     final healthDiscount = _parseMoney(salaryHealthDiscountInput);
     final dependents = _parseIntOr(salaryDependentsInput, -1);
     if (salary == null ||
         salary <= 0 ||
-        overtime50 == null ||
-        overtime50 < 0 ||
-        overtime100 == null ||
-        overtime100 < 0 ||
+        overtime50Hours == null ||
+        overtime50Hours < 0 ||
+        overtime100Hours == null ||
+        overtime100Hours < 0 ||
         healthDiscount == null ||
         healthDiscount < 0 ||
         dependents < 0) {
@@ -624,6 +666,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       return;
     }
 
+    final hourlyRate = salary / 220.0;
+    final overtime50 = hourlyRate * 1.5 * overtime50Hours;
+    final overtime100 = hourlyRate * 2.0 * overtime100Hours;
     final taxableGross = salary + overtime50 + overtime100;
     final inss = _calculateInss(taxableGross);
     final base = (taxableGross - inss).clamp(0, double.infinity).toDouble();
@@ -639,6 +684,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       salaryError = null;
       salaryResult = {
         'baseSalary': salary,
+        'hourlyRate': hourlyRate,
+        'overtime50Hours': overtime50Hours,
+        'overtime100Hours': overtime100Hours,
         'overtime50': overtime50,
         'overtime100': overtime100,
         'gross': taxableGross,
@@ -654,6 +702,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       'gross_salary': taxableGross,
       'net_salary': net,
       'dependents': dependents,
+      'overtime_50_hours': overtime50Hours,
+      'overtime_100_hours': overtime100Hours,
       'simplified_irrf': salarySimplified,
     });
     _addHistory(
@@ -764,6 +814,136 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       'Reajuste salarial',
       newSalary,
       'Aumento ${brl.format(totalIncrease)} | Percentual efetivo ${effectivePercent.toStringAsFixed(2)}%',
+    );
+  }
+
+  void _calculateHourlyRate() {
+    _dismissKeyboard();
+    final salary = _parseMoney(hourlySalaryInput);
+    final monthlyHours = _parseMoney(hourlyMonthlyHoursInput);
+
+    if (salary == null ||
+        salary <= 0 ||
+        monthlyHours == null ||
+        monthlyHours <= 0) {
+      setState(() {
+        hourlyRateError = 'Informe o salário e a jornada mensal corretamente.';
+        hourlyRateResult = null;
+      });
+      return;
+    }
+
+    final hourlyRate = salary / monthlyHours;
+    final overtime50 = hourlyRate * 1.5;
+    final overtime100 = hourlyRate * 2.0;
+
+    setState(() {
+      hourlyRateError = null;
+      hourlyRateResult = {
+        'salary': salary,
+        'monthlyHours': monthlyHours,
+        'hourlyRate': hourlyRate,
+        'overtime50': overtime50,
+        'overtime100': overtime100,
+      };
+    });
+
+    _logEvent('calculate_hourly_rate', {
+      'gross_salary': salary,
+      'monthly_hours': monthlyHours,
+      'hourly_rate': hourlyRate,
+    });
+    _addHistory(
+      'Valor da hora',
+      'Cálculo do valor da hora',
+      hourlyRate,
+      'Jornada ${monthlyHours.toStringAsFixed(2)}h | HE 50% ${brl.format(overtime50)} | HE 100% ${brl.format(overtime100)}',
+    );
+  }
+
+  void _calculatePjComparison() {
+    _dismissKeyboard();
+    final cltSalary = _parseMoney(pjCltSalaryInput);
+    final pjRevenue = _parseMoney(pjMonthlyRevenueInput);
+    final taxPercent = _parseMoney(pjTaxPercentInput);
+    final costs = _parseMoney(pjMonthlyCostsInput);
+    final benefits = _parseMoney(pjBenefitsInput);
+    final vacationReservePercent = _parseMoney(pjVacationReservePercentInput);
+    final thirteenthReservePercent = _parseMoney(
+      pjThirteenthReservePercentInput,
+    );
+
+    if (cltSalary == null ||
+        cltSalary <= 0 ||
+        pjRevenue == null ||
+        pjRevenue <= 0 ||
+        taxPercent == null ||
+        taxPercent < 0 ||
+        costs == null ||
+        costs < 0 ||
+        benefits == null ||
+        benefits < 0 ||
+        vacationReservePercent == null ||
+        vacationReservePercent < 0 ||
+        thirteenthReservePercent == null ||
+        thirteenthReservePercent < 0) {
+      setState(() {
+        pjComparisonError = 'Revise os campos da comparação CLT x PJ.';
+        pjComparisonResult = null;
+      });
+      return;
+    }
+
+    final inss = _calculateInss(cltSalary);
+    final cltIrrf = _calculateIrrf(
+      grossForReduction: cltSalary,
+      taxBase: cltSalary - inss,
+      dependents: 0,
+      applySimplified: true,
+    );
+    final cltNet = cltSalary - inss - cltIrrf + benefits;
+    final cltFgts = cltSalary * 0.08;
+    final cltMonthlyEquivalent = cltNet + (cltSalary / 12.0) + cltFgts;
+
+    final pjTax = pjRevenue * (taxPercent / 100.0);
+    final vacationReserve = pjRevenue * (vacationReservePercent / 100.0);
+    final thirteenthReserve = pjRevenue * (thirteenthReservePercent / 100.0);
+    final pjNet =
+        pjRevenue - pjTax - costs - vacationReserve - thirteenthReserve;
+    final difference = pjNet - cltMonthlyEquivalent;
+
+    setState(() {
+      pjComparisonError = null;
+      pjComparisonResult = {
+        'cltSalary': cltSalary,
+        'cltInss': inss,
+        'cltIrrf': cltIrrf,
+        'cltBenefits': benefits,
+        'cltNet': cltNet,
+        'cltFgts': cltFgts,
+        'cltMonthlyEquivalent': cltMonthlyEquivalent,
+        'pjRevenue': pjRevenue,
+        'pjTaxPercent': taxPercent,
+        'pjTax': pjTax,
+        'pjCosts': costs,
+        'vacationReserve': vacationReserve,
+        'thirteenthReserve': thirteenthReserve,
+        'pjNet': pjNet,
+        'difference': difference,
+      };
+    });
+
+    _logEvent('calculate_pj_comparison', {
+      'clt_salary': cltSalary,
+      'pj_revenue': pjRevenue,
+      'pj_net': pjNet,
+      'difference': difference,
+    });
+    _addHistory(
+      'CLT x PJ',
+      'Comparação CLT x PJ',
+      difference,
+      'CLT equivalente ${brl.format(cltMonthlyEquivalent)} | PJ líquido ${brl.format(pjNet)}',
     );
   }
 
@@ -924,6 +1104,30 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   Widget _buildBanner() {
     if (_bannerAd == null || !_isBannerReady) return const SizedBox.shrink();
     return AdWidget(ad: _bannerAd!);
+  }
+
+  Widget? _buildBottomAdBar(BuildContext context) {
+    final banner = _bannerAd;
+    if (banner == null || !_isBannerReady) return null;
+
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final bottomPadding = (bottomInset > 0 ? bottomInset : 12.0) + 8.0;
+    final color = Theme.of(context).colorScheme.surface;
+
+    return Material(
+      color: color,
+      elevation: 6,
+      child: Padding(
+        padding: EdgeInsets.only(top: 8, bottom: bottomPadding),
+        child: Center(
+          child: SizedBox(
+            width: banner.size.width.toDouble(),
+            height: banner.size.height.toDouble(),
+            child: _buildBanner(),
+          ),
+        ),
+      ),
+    );
   }
 
   int get _sectionIndex {
@@ -1117,21 +1321,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
               centerTitle: wideLayout,
             ),
             drawer: wideLayout ? null : _buildDrawer(),
-            bottomNavigationBar:
-                (_bannerAd != null && _isBannerReady)
-                    ? SafeArea(
-                      top: false,
-                      child: SizedBox(
-                        height: _bannerAd!.size.height.toDouble(),
-                        child: Center(
-                          child: SizedBox(
-                            width: _bannerAd!.size.width.toDouble(),
-                            child: _buildBanner(),
-                          ),
-                        ),
-                      ),
-                    )
-                    : null,
+            bottomNavigationBar: _buildBottomAdBar(context),
             body:
                 wideLayout
                     ? Row(
@@ -1152,12 +1342,40 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     return SizedBox(
       width: double.infinity,
       child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 12),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: children,
+            children: _withVerticalSpacing(children, 6),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _withVerticalSpacing(List<Widget> children, double spacing) {
+    if (children.isEmpty) return children;
+
+    final spaced = <Widget>[];
+    for (final child in children) {
+      if (spaced.isNotEmpty) spaced.add(SizedBox(height: spacing));
+      spaced.add(child);
+    }
+    return spaced;
+  }
+
+  Widget _primaryButton(String label, VoidCallback onPressed) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 6),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(label, textAlign: TextAlign.center),
           ),
         ),
       ),
@@ -1211,6 +1429,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     if (result == null) return const [];
     final gross = _mapDouble(result, 'gross');
     final baseSalary = _mapDouble(result, 'baseSalary');
+    final hourlyRate = _mapDouble(result, 'hourlyRate');
+    final overtime50Hours = _mapDouble(result, 'overtime50Hours');
+    final overtime100Hours = _mapDouble(result, 'overtime100Hours');
     final overtime50 = _mapDouble(result, 'overtime50');
     final overtime100 = _mapDouble(result, 'overtime100');
     final dependents = _mapDouble(result, 'dependents').toInt();
@@ -1239,7 +1460,9 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
 
     return [
       'Salário base informado: ${brl.format(baseSalary)}.',
-      'Horas extras 50% somadas ao bruto: ${brl.format(overtime50)}. Horas extras 100% somadas ao bruto: ${brl.format(overtime100)}.',
+      'Valor da hora calculado pela jornada padrão de 220 horas mensais: ${brl.format(hourlyRate)}.',
+      'Horas extras 50%: ${overtime50Hours.toStringAsFixed(2)}h x valor da hora x 1,5 = ${brl.format(overtime50)}.',
+      'Horas extras 100%: ${overtime100Hours.toStringAsFixed(2)}h x valor da hora x 2 = ${brl.format(overtime100)}.',
       'Bruto tributável considerado: salário base + horas extras = ${brl.format(gross)}.',
       'INSS segue tabela progressiva (7,5% a 14%). Enquadramento do salário: ${_inssBracketLabel(gross)}.',
       'Desconto total de INSS calculado por faixas: ${brl.format(inss)}.',
@@ -1374,6 +1597,59 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     ];
   }
 
+  List<String> _hourlyRateExplanationSteps() {
+    final result = hourlyRateResult;
+    if (result == null) return const [];
+    final salary = _mapDouble(result, 'salary');
+    final monthlyHours = _mapDouble(result, 'monthlyHours');
+    final hourlyRate = _mapDouble(result, 'hourlyRate');
+    final overtime50 = _mapDouble(result, 'overtime50');
+    final overtime100 = _mapDouble(result, 'overtime100');
+
+    return [
+      'Salário informado: ${brl.format(salary)}.',
+      'Jornada mensal informada: ${monthlyHours.toStringAsFixed(2)} horas.',
+      'Valor da hora comum: salário / jornada mensal = ${brl.format(hourlyRate)}.',
+      'Hora extra 50%: valor da hora x 1,5 = ${brl.format(overtime50)}.',
+      'Hora extra 100%: valor da hora x 2 = ${brl.format(overtime100)}.',
+    ];
+  }
+
+  List<String> _pjComparisonExplanationSteps() {
+    final result = pjComparisonResult;
+    if (result == null) return const [];
+    final cltSalary = _mapDouble(result, 'cltSalary');
+    final cltInss = _mapDouble(result, 'cltInss');
+    final cltIrrf = _mapDouble(result, 'cltIrrf');
+    final cltBenefits = _mapDouble(result, 'cltBenefits');
+    final cltNet = _mapDouble(result, 'cltNet');
+    final cltFgts = _mapDouble(result, 'cltFgts');
+    final cltMonthlyEquivalent = _mapDouble(result, 'cltMonthlyEquivalent');
+    final pjRevenue = _mapDouble(result, 'pjRevenue');
+    final pjTaxPercent = _mapDouble(result, 'pjTaxPercent');
+    final pjTax = _mapDouble(result, 'pjTax');
+    final pjCosts = _mapDouble(result, 'pjCosts');
+    final vacationReserve = _mapDouble(result, 'vacationReserve');
+    final thirteenthReserve = _mapDouble(result, 'thirteenthReserve');
+    final pjNet = _mapDouble(result, 'pjNet');
+    final difference = _mapDouble(result, 'difference');
+
+    return [
+      'CLT: salário bruto informado ${brl.format(cltSalary)}.',
+      'Descontos CLT estimados: INSS ${brl.format(cltInss)} e IRRF ${brl.format(cltIrrf)}. Benefícios mensais somados: ${brl.format(cltBenefits)}.',
+      'Líquido CLT mensal com benefícios: ${brl.format(cltNet)}.',
+      'Equivalência CLT adiciona 13º proporcional (${brl.format(cltSalary / 12.0)}) e FGTS mensal de 8% (${brl.format(cltFgts)}). Total equivalente: ${brl.format(cltMonthlyEquivalent)}.',
+      'PJ: faturamento mensal informado ${brl.format(pjRevenue)}.',
+      'Impostos PJ configurados: ${pjTaxPercent.toStringAsFixed(2)}% = ${brl.format(pjTax)}. Custos mensais: ${brl.format(pjCosts)}.',
+      'Reservas configuradas: férias ${brl.format(vacationReserve)} e 13º/autoproteção ${brl.format(thirteenthReserve)}.',
+      'Líquido PJ estimado após impostos, custos e reservas: ${brl.format(pjNet)}.',
+      difference >= 0
+          ? 'Nesta simulação, PJ fica acima do CLT equivalente em ${brl.format(difference)} por mês.'
+          : 'Nesta simulação, PJ fica abaixo do CLT equivalente em ${brl.format(difference.abs())} por mês.',
+      'Use essa comparação como estimativa. Regime tributário, CNAE, pró-labore, contabilidade, benefícios, férias e risco de contrato podem mudar o resultado real.',
+    ];
+  }
+
   Widget _buildCalculators() {
     return SingleChildScrollView(
       child: Column(
@@ -1408,6 +1684,16 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                 selected: calcTab == CalcTab.salaryAdjustment,
                 onSelected: (_) => _setCalcTab(CalcTab.salaryAdjustment),
               ),
+              ChoiceChip(
+                label: const Text('Valor da hora'),
+                selected: calcTab == CalcTab.hourlyRate,
+                onSelected: (_) => _setCalcTab(CalcTab.hourlyRate),
+              ),
+              ChoiceChip(
+                label: const Text('CLT x PJ'),
+                selected: calcTab == CalcTab.pjComparison,
+                onSelected: (_) => _setCalcTab(CalcTab.pjComparison),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -1416,6 +1702,8 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           if (calcTab == CalcTab.termination) _buildTermination(),
           if (calcTab == CalcTab.fgts) _buildFgts(),
           if (calcTab == CalcTab.salaryAdjustment) _buildSalaryAdjustment(),
+          if (calcTab == CalcTab.hourlyRate) _buildHourlyRate(),
+          if (calcTab == CalcTab.pjComparison) _buildPjComparison(),
         ],
       ),
     );
@@ -1445,17 +1733,17 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           integer: true,
         ),
         _textField(
-          'Horas extras 50% (valor mensal)',
-          salaryOvertime50Input,
+          'Quantidade de horas extras 50%',
+          salaryOvertime50HoursInput,
           'salary_ot50_input',
-          (v) => salaryOvertime50Input = v,
+          (v) => salaryOvertime50HoursInput = v,
           money: true,
         ),
         _textField(
-          'Horas extras 100% (valor mensal)',
-          salaryOvertime100Input,
+          'Quantidade de horas extras 100%',
+          salaryOvertime100HoursInput,
           'salary_ot100_input',
-          (v) => salaryOvertime100Input = v,
+          (v) => salaryOvertime100HoursInput = v,
           money: true,
         ),
         _textField(
@@ -1473,20 +1761,18 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
             _saveBool('salary_simplified', v);
           },
         ),
-        FilledButton(
-          onPressed: _calculateSalary,
-          child: const Text('Calcular salário líquido'),
-        ),
+        _primaryButton('Calcular salário líquido', _calculateSalary),
         if (salaryError != null)
           Text(salaryError!, style: const TextStyle(color: Colors.red)),
         if (salaryResult != null)
           _buildResultCard([
             Text('Salário base: ${brl.format(salaryResult!['baseSalary'])}'),
+            Text('Valor da hora: ${brl.format(salaryResult!['hourlyRate'])}'),
             Text(
-              'Horas extras 50%: ${brl.format(salaryResult!['overtime50'])}',
+              'Horas extras 50%: ${_mapDouble(salaryResult!, 'overtime50Hours').toStringAsFixed(2)}h = ${brl.format(salaryResult!['overtime50'])}',
             ),
             Text(
-              'Horas extras 100%: ${brl.format(salaryResult!['overtime100'])}',
+              'Horas extras 100%: ${_mapDouble(salaryResult!, 'overtime100Hours').toStringAsFixed(2)}h = ${brl.format(salaryResult!['overtime100'])}',
             ),
             Text('Bruto tributável: ${brl.format(salaryResult!['gross'])}'),
             Text(
@@ -1594,10 +1880,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
             _saveBool('vac_simplified', v);
           },
         ),
-        FilledButton(
-          onPressed: _calculateVacation,
-          child: const Text('Calcular férias'),
-        ),
+        _primaryButton('Calcular férias', _calculateVacation),
         if (vacationError != null)
           Text(vacationError!, style: const TextStyle(color: Colors.red)),
         if (vacationResult != null)
@@ -1745,10 +2028,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
             _saveBool('term_simplified', v);
           },
         ),
-        FilledButton(
-          onPressed: _calculateTermination,
-          child: const Text('Calcular rescisão'),
-        ),
+        _primaryButton('Calcular rescisão', _calculateTermination),
         if (terminationError != null)
           Text(terminationError!, style: const TextStyle(color: Colors.red)),
         if (terminationResult != null)
@@ -1836,10 +2116,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
             _saveString('fgts_include_fine_input', fgtsIncludeFineInput);
           },
         ),
-        FilledButton(
-          onPressed: _calculateFgts,
-          child: const Text('Calcular FGTS'),
-        ),
+        _primaryButton('Calcular FGTS', _calculateFgts),
         if (fgtsError != null)
           Text(fgtsError!, style: const TextStyle(color: Colors.red)),
         if (fgtsResult != null)
@@ -1905,10 +2182,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           (v) => adjustmentFixedValueInput = v,
           money: true,
         ),
-        FilledButton(
-          onPressed: _calculateSalaryAdjustment,
-          child: const Text('Calcular reajuste'),
-        ),
+        _primaryButton('Calcular reajuste', _calculateSalaryAdjustment),
         if (adjustmentError != null)
           Text(adjustmentError!, style: const TextStyle(color: Colors.red)),
         if (adjustmentResult != null)
@@ -1954,6 +2228,168 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     );
   }
 
+  Widget _buildHourlyRate() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _textField(
+          'Salário bruto mensal',
+          hourlySalaryInput,
+          'hourly_salary_input',
+          (v) => hourlySalaryInput = v,
+          money: true,
+        ),
+        _textField(
+          'Jornada mensal em horas',
+          hourlyMonthlyHoursInput,
+          'hourly_monthly_hours_input',
+          (v) => hourlyMonthlyHoursInput = v,
+          money: true,
+        ),
+        _primaryButton('Calcular valor da hora', _calculateHourlyRate),
+        if (hourlyRateError != null)
+          Text(hourlyRateError!, style: const TextStyle(color: Colors.red)),
+        if (hourlyRateResult != null)
+          _buildResultCard([
+            Text('Salário: ${brl.format(hourlyRateResult!['salary'])}'),
+            Text(
+              'Jornada mensal: ${_mapDouble(hourlyRateResult!, 'monthlyHours').toStringAsFixed(2)}h',
+            ),
+            Text(
+              'Hora comum: ${brl.format(hourlyRateResult!['hourlyRate'])}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text(
+              'Hora extra 50%: ${brl.format(hourlyRateResult!['overtime50'])}',
+            ),
+            Text(
+              'Hora extra 100%: ${brl.format(hourlyRateResult!['overtime100'])}',
+            ),
+          ]),
+        if (hourlyRateResult != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder:
+                  (buttonContext) => OutlinedButton.icon(
+                    onPressed:
+                        () => _showCalculationExplanation(
+                          context: buttonContext,
+                          title: 'Como calculamos o valor da hora',
+                          steps: _hourlyRateExplanationSteps(),
+                        ),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Como calculamos'),
+                  ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPjComparison() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Comparação estimada. Ajuste impostos, custos e reservas conforme seu caso.',
+        ),
+        const SizedBox(height: 8),
+        _textField(
+          'Salário CLT bruto mensal',
+          pjCltSalaryInput,
+          'pj_clt_salary_input',
+          (v) => pjCltSalaryInput = v,
+          money: true,
+        ),
+        _textField(
+          'Benefícios CLT mensais (VR, VA, plano etc.)',
+          pjBenefitsInput,
+          'pj_benefits_input',
+          (v) => pjBenefitsInput = v,
+          money: true,
+        ),
+        _textField(
+          'Faturamento PJ mensal',
+          pjMonthlyRevenueInput,
+          'pj_monthly_revenue_input',
+          (v) => pjMonthlyRevenueInput = v,
+          money: true,
+        ),
+        _textField(
+          'Impostos PJ (%)',
+          pjTaxPercentInput,
+          'pj_tax_percent_input',
+          (v) => pjTaxPercentInput = v,
+          money: true,
+        ),
+        _textField(
+          'Custos PJ mensais',
+          pjMonthlyCostsInput,
+          'pj_monthly_costs_input',
+          (v) => pjMonthlyCostsInput = v,
+          money: true,
+        ),
+        _textField(
+          'Reserva para férias (%)',
+          pjVacationReservePercentInput,
+          'pj_vacation_reserve_percent_input',
+          (v) => pjVacationReservePercentInput = v,
+          money: true,
+        ),
+        _textField(
+          'Reserva para 13º/autoproteção (%)',
+          pjThirteenthReservePercentInput,
+          'pj_thirteenth_reserve_percent_input',
+          (v) => pjThirteenthReservePercentInput = v,
+          money: true,
+        ),
+        _primaryButton('Comparar CLT x PJ', _calculatePjComparison),
+        if (pjComparisonError != null)
+          Text(pjComparisonError!, style: const TextStyle(color: Colors.red)),
+        if (pjComparisonResult != null)
+          _buildResultCard([
+            Text(
+              'CLT líquido + benefícios: ${brl.format(pjComparisonResult!['cltNet'])}',
+            ),
+            Text(
+              'CLT equivalente com 13º e FGTS: ${brl.format(pjComparisonResult!['cltMonthlyEquivalent'])}',
+            ),
+            Text('PJ bruto: ${brl.format(pjComparisonResult!['pjRevenue'])}'),
+            Text('Impostos PJ: ${brl.format(pjComparisonResult!['pjTax'])}'),
+            Text('Custos PJ: ${brl.format(pjComparisonResult!['pjCosts'])}'),
+            Text(
+              'Reservas PJ: ${brl.format(_mapDouble(pjComparisonResult!, 'vacationReserve') + _mapDouble(pjComparisonResult!, 'thirteenthReserve'))}',
+            ),
+            Text(
+              'PJ líquido estimado: ${brl.format(pjComparisonResult!['pjNet'])}',
+            ),
+            Text(
+              'Diferença PJ - CLT: ${brl.format(pjComparisonResult!['difference'])}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ]),
+        if (pjComparisonResult != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder:
+                  (buttonContext) => OutlinedButton.icon(
+                    onPressed:
+                        () => _showCalculationExplanation(
+                          context: buttonContext,
+                          title: 'Como comparamos CLT x PJ',
+                          steps: _pjComparisonExplanationSteps(),
+                        ),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Como calculamos'),
+                  ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _textField(
     String label,
     String value,
@@ -1971,15 +2407,18 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
             ? <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly]
             : const <TextInputFormatter>[];
 
-    return TextFormField(
-      keyboardType: keyboardType,
-      inputFormatters: formatters,
-      decoration: InputDecoration(labelText: label),
-      initialValue: value,
-      onChanged: (v) {
-        setter(v);
-        _saveString(key, v);
-      },
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        keyboardType: keyboardType,
+        inputFormatters: formatters,
+        decoration: InputDecoration(labelText: label),
+        initialValue: value,
+        onChanged: (v) {
+          setter(v);
+          _saveString(key, v);
+        },
+      ),
     );
   }
 

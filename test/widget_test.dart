@@ -11,6 +11,6 @@ void main() {
     await tester.pump();
 
     expect(find.text('CLT Brasil'), findsWidgets);
-    expect(find.byType(ChoiceChip), findsNWidgets(5));
+    expect(find.byType(ChoiceChip), findsNWidgets(7));
   });
 }
