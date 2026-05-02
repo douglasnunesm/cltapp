@@ -14,7 +14,7 @@ const String admobBannerUnitId = 'ca-app-pub-5979475974508131/7828121452';
 
 enum AppSection { calculators, history, settings }
 
-enum CalcTab { salary, vacation, termination }
+enum CalcTab { salary, vacation, termination, fgts, salaryAdjustment }
 
 enum TerminationType { withoutCause, employeeResignation, withCause }
 
@@ -170,6 +170,10 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   bool discountEmployeeNotice = false;
 
   String salaryInput = '';
+  String salaryDependentsInput = '0';
+  String salaryOvertime50Input = '0,00';
+  String salaryOvertime100Input = '0,00';
+  String salaryHealthDiscountInput = '0,00';
   String vacationSalaryInput = '';
   String vacationDaysInput = '30';
   String vacationOvertimeInput = '0,00';
@@ -183,13 +187,26 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   String terminationFgtsInput = '0,00';
   String terminationDependentsInput = '0';
 
+  String fgtsSalaryInput = '';
+  String fgtsMonthsInput = '12';
+  String fgtsCurrentBalanceInput = '0,00';
+  String fgtsIncludeFineInput = '0';
+
+  String adjustmentCurrentSalaryInput = '';
+  String adjustmentPercentInput = '';
+  String adjustmentFixedValueInput = '0,00';
+
   String? salaryError;
   String? vacationError;
   String? terminationError;
+  String? fgtsError;
+  String? adjustmentError;
 
   Map<String, double>? salaryResult;
   Map<String, double>? vacationResult;
   Map<String, double>? terminationResult;
+  Map<String, double>? fgtsResult;
+  Map<String, double>? adjustmentResult;
 
   List<HistoryEntry> history = [];
 
@@ -240,6 +257,25 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       terminationFgtsInput = prefs.getString('term_fgts_input') ?? '0,00';
       terminationDependentsInput =
           prefs.getString('term_dependents_input') ?? '0';
+
+      salaryDependentsInput = prefs.getString('salary_dependents_input') ?? '0';
+      salaryOvertime50Input = prefs.getString('salary_ot50_input') ?? '0,00';
+      salaryOvertime100Input = prefs.getString('salary_ot100_input') ?? '0,00';
+      salaryHealthDiscountInput =
+          prefs.getString('salary_health_discount_input') ?? '0,00';
+
+      fgtsSalaryInput = prefs.getString('fgts_salary_input') ?? '';
+      fgtsMonthsInput = prefs.getString('fgts_months_input') ?? '12';
+      fgtsCurrentBalanceInput =
+          prefs.getString('fgts_current_balance_input') ?? '0,00';
+      fgtsIncludeFineInput = prefs.getString('fgts_include_fine_input') ?? '0';
+
+      adjustmentCurrentSalaryInput =
+          prefs.getString('adjustment_current_salary_input') ?? '';
+      adjustmentPercentInput =
+          prefs.getString('adjustment_percent_input') ?? '';
+      adjustmentFixedValueInput =
+          prefs.getString('adjustment_fixed_value_input') ?? '0,00';
 
       final termRaw = prefs.getString('term_type') ?? 'without_cause';
       terminationType = _terminationTypeFromKey(termRaw);
@@ -352,6 +388,10 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
         return 'vacation';
       case CalcTab.termination:
         return 'termination';
+      case CalcTab.fgts:
+        return 'fgts';
+      case CalcTab.salaryAdjustment:
+        return 'salary_adjustment';
     }
   }
 
@@ -564,39 +604,166 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   void _calculateSalary() {
     _dismissKeyboard();
     final salary = _parseMoney(salaryInput);
-    if (salary == null || salary <= 0) {
+    final overtime50 = _parseMoney(salaryOvertime50Input);
+    final overtime100 = _parseMoney(salaryOvertime100Input);
+    final healthDiscount = _parseMoney(salaryHealthDiscountInput);
+    final dependents = _parseIntOr(salaryDependentsInput, -1);
+    if (salary == null ||
+        salary <= 0 ||
+        overtime50 == null ||
+        overtime50 < 0 ||
+        overtime100 == null ||
+        overtime100 < 0 ||
+        healthDiscount == null ||
+        healthDiscount < 0 ||
+        dependents < 0) {
       setState(() {
-        salaryError = 'Informe um salário válido maior que zero.';
+        salaryError = 'Revise os campos do salário líquido.';
         salaryResult = null;
       });
       return;
     }
 
-    final inss = _calculateInss(salary);
-    final base = (salary - inss).clamp(0, double.infinity).toDouble();
+    final taxableGross = salary + overtime50 + overtime100;
+    final inss = _calculateInss(taxableGross);
+    final base = (taxableGross - inss).clamp(0, double.infinity).toDouble();
     final irrf = _calculateIrrf(
-      grossForReduction: salary,
+      grossForReduction: taxableGross,
       taxBase: base,
-      dependents: 0,
+      dependents: dependents.clamp(0, 20),
       applySimplified: salarySimplified,
     );
-    final net = salary - inss - irrf;
+    final net = taxableGross - inss - irrf - healthDiscount;
 
     setState(() {
       salaryError = null;
-      salaryResult = {'gross': salary, 'inss': inss, 'irrf': irrf, 'net': net};
+      salaryResult = {
+        'baseSalary': salary,
+        'overtime50': overtime50,
+        'overtime100': overtime100,
+        'gross': taxableGross,
+        'dependents': dependents.toDouble(),
+        'healthDiscount': healthDiscount,
+        'inss': inss,
+        'irrf': irrf,
+        'net': net,
+      };
     });
 
     _logEvent('calculate_salary', {
-      'gross_salary': salary,
+      'gross_salary': taxableGross,
       'net_salary': net,
+      'dependents': dependents,
       'simplified_irrf': salarySimplified,
     });
     _addHistory(
       'Salário',
       'Salário líquido',
       net,
-      'Bruto ${brl.format(salary)} | INSS ${brl.format(inss)} | IRRF ${brl.format(irrf)}',
+      'Bruto ${brl.format(taxableGross)} | INSS ${brl.format(inss)} | IRRF ${brl.format(irrf)}',
+    );
+  }
+
+  void _calculateFgts() {
+    _dismissKeyboard();
+    final salary = _parseMoney(fgtsSalaryInput);
+    final months = _parseIntOr(fgtsMonthsInput, -1);
+    final currentBalance = _parseMoney(fgtsCurrentBalanceInput);
+    final includeFine = _parseIntOr(fgtsIncludeFineInput, 0) == 1;
+
+    if (salary == null ||
+        salary <= 0 ||
+        months < 0 ||
+        currentBalance == null ||
+        currentBalance < 0) {
+      setState(() {
+        fgtsError = 'Revise os campos do FGTS.';
+        fgtsResult = null;
+      });
+      return;
+    }
+
+    final monthlyDeposit = salary * 0.08;
+    final periodDeposit = monthlyDeposit * months;
+    final projectedBalance = currentBalance + periodDeposit;
+    final terminationFine = includeFine ? projectedBalance * 0.40 : 0.0;
+    final total = projectedBalance + terminationFine;
+
+    setState(() {
+      fgtsError = null;
+      fgtsResult = {
+        'salary': salary,
+        'months': months.toDouble(),
+        'monthlyDeposit': monthlyDeposit,
+        'periodDeposit': periodDeposit,
+        'currentBalance': currentBalance,
+        'projectedBalance': projectedBalance,
+        'terminationFine': terminationFine,
+        'total': total,
+      };
+    });
+
+    _logEvent('calculate_fgts', {
+      'gross_salary': salary,
+      'months': months,
+      'include_fine': includeFine,
+      'total_value': total,
+    });
+    _addHistory(
+      'FGTS',
+      'Cálculo de FGTS',
+      total,
+      'Depósito mensal ${brl.format(monthlyDeposit)} | Período $months meses',
+    );
+  }
+
+  void _calculateSalaryAdjustment() {
+    _dismissKeyboard();
+    final currentSalary = _parseMoney(adjustmentCurrentSalaryInput);
+    final percent = _parseMoney(adjustmentPercentInput) ?? 0;
+    final fixedValue = _parseMoney(adjustmentFixedValueInput) ?? 0;
+
+    if (currentSalary == null ||
+        currentSalary <= 0 ||
+        percent < 0 ||
+        fixedValue < 0 ||
+        (percent == 0 && fixedValue == 0)) {
+      setState(() {
+        adjustmentError =
+            'Informe o salário atual e pelo menos um percentual ou valor fixo.';
+        adjustmentResult = null;
+      });
+      return;
+    }
+
+    final percentIncrease = currentSalary * (percent / 100);
+    final totalIncrease = percentIncrease + fixedValue;
+    final newSalary = currentSalary + totalIncrease;
+    final effectivePercent = (totalIncrease / currentSalary) * 100;
+
+    setState(() {
+      adjustmentError = null;
+      adjustmentResult = {
+        'currentSalary': currentSalary,
+        'percent': percent,
+        'percentIncrease': percentIncrease,
+        'fixedValue': fixedValue,
+        'totalIncrease': totalIncrease,
+        'newSalary': newSalary,
+        'effectivePercent': effectivePercent,
+      };
+    });
+
+    _logEvent('calculate_salary_adjustment', {
+      'current_salary': currentSalary,
+      'new_salary': newSalary,
+      'effective_percent': effectivePercent,
+    });
+    _addHistory(
+      'Reajuste',
+      'Reajuste salarial',
+      newSalary,
+      'Aumento ${brl.format(totalIncrease)} | Percentual efetivo ${effectivePercent.toStringAsFixed(2)}%',
     );
   }
 
@@ -1043,31 +1210,48 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     final result = salaryResult;
     if (result == null) return const [];
     final gross = _mapDouble(result, 'gross');
+    final baseSalary = _mapDouble(result, 'baseSalary');
+    final overtime50 = _mapDouble(result, 'overtime50');
+    final overtime100 = _mapDouble(result, 'overtime100');
+    final dependents = _mapDouble(result, 'dependents').toInt();
+    final healthDiscount = _mapDouble(result, 'healthDiscount');
     final inss = _mapDouble(result, 'inss');
     final irrf = _mapDouble(result, 'irrf');
     final net = _mapDouble(result, 'net');
     final irrfBase = (gross - inss).clamp(0, double.infinity).toDouble();
     const simplifiedDiscount = 607.20;
+    const dependentDeduction = 189.59;
+    final baseAfterDependents =
+        (irrfBase - (dependents * dependentDeduction))
+            .clamp(0, double.infinity)
+            .toDouble();
     final adjustedBase =
         (salarySimplified
-                ? (irrfBase - simplifiedDiscount).clamp(0, double.infinity)
-                : irrfBase)
+                ? (baseAfterDependents - simplifiedDiscount).clamp(
+                  0,
+                  double.infinity,
+                )
+                : baseAfterDependents)
             .toDouble();
     final irrfTable = _irrfRateAndDeduction(adjustedBase);
     final irrfRate = _mapDouble(irrfTable, 'rate');
     final irrfDeduction = _mapDouble(irrfTable, 'deduction');
 
     return [
-      'Salário bruto informado: ${brl.format(gross)}.',
+      'Salário base informado: ${brl.format(baseSalary)}.',
+      'Horas extras 50% somadas ao bruto: ${brl.format(overtime50)}. Horas extras 100% somadas ao bruto: ${brl.format(overtime100)}.',
+      'Bruto tributável considerado: salário base + horas extras = ${brl.format(gross)}.',
       'INSS segue tabela progressiva (7,5% a 14%). Enquadramento do salário: ${_inssBracketLabel(gross)}.',
       'Desconto total de INSS calculado por faixas: ${brl.format(inss)}.',
       'Base do IRRF: bruto - INSS = ${brl.format(irrfBase)}.',
+      'Dependentes informados: $dependents. Dedução por dependente: R\$ 189,59. Base após dependentes: ${brl.format(baseAfterDependents)}.',
       salarySimplified
           ? 'Desconto simplificado do IRRF aplicado (R\$ 607,20). Base ajustada: ${brl.format(adjustedBase)}.'
           : 'Desconto simplificado do IRRF desativado. Base ajustada: ${brl.format(adjustedBase)}.',
       'Faixa do IRRF: ${_irrfBracketLabel(adjustedBase)}. Alíquota ${_pct(irrfRate)} e parcela a deduzir ${brl.format(irrfDeduction)}.',
       'IRRF calculado: ${brl.format(irrf)}.',
-      'Salário líquido final: bruto - INSS - IRRF = ${brl.format(net)}.',
+      'Desconto informado de plano de saúde: ${brl.format(healthDiscount)}.',
+      'Salário líquido final: bruto - INSS - IRRF - plano de saúde = ${brl.format(net)}.',
     ];
   }
 
@@ -1144,6 +1328,52 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     ];
   }
 
+  List<String> _fgtsExplanationSteps() {
+    final result = fgtsResult;
+    if (result == null) return const [];
+    final salary = _mapDouble(result, 'salary');
+    final months = _mapDouble(result, 'months').toInt();
+    final monthlyDeposit = _mapDouble(result, 'monthlyDeposit');
+    final periodDeposit = _mapDouble(result, 'periodDeposit');
+    final currentBalance = _mapDouble(result, 'currentBalance');
+    final projectedBalance = _mapDouble(result, 'projectedBalance');
+    final terminationFine = _mapDouble(result, 'terminationFine');
+    final total = _mapDouble(result, 'total');
+
+    return [
+      'Base informada para FGTS: ${brl.format(salary)}.',
+      'Depósito mensal do FGTS: 8% do salário bruto = ${brl.format(monthlyDeposit)}.',
+      'Período informado: $months meses. Depósitos estimados no período: ${brl.format(periodDeposit)}.',
+      'Saldo atual informado: ${brl.format(currentBalance)}.',
+      'Saldo projetado: saldo atual + depósitos do período = ${brl.format(projectedBalance)}.',
+      terminationFine > 0
+          ? 'Multa rescisória de 40% estimada sobre o saldo projetado: ${brl.format(terminationFine)}.'
+          : 'Multa rescisória de 40% não foi incluída.',
+      'Total estimado exibido: ${brl.format(total)}.',
+    ];
+  }
+
+  List<String> _salaryAdjustmentExplanationSteps() {
+    final result = adjustmentResult;
+    if (result == null) return const [];
+    final currentSalary = _mapDouble(result, 'currentSalary');
+    final percent = _mapDouble(result, 'percent');
+    final percentIncrease = _mapDouble(result, 'percentIncrease');
+    final fixedValue = _mapDouble(result, 'fixedValue');
+    final totalIncrease = _mapDouble(result, 'totalIncrease');
+    final newSalary = _mapDouble(result, 'newSalary');
+    final effectivePercent = _mapDouble(result, 'effectivePercent');
+
+    return [
+      'Salário atual informado: ${brl.format(currentSalary)}.',
+      'Percentual informado: ${percent.toStringAsFixed(2)}%. Aumento percentual: ${brl.format(percentIncrease)}.',
+      'Valor fixo adicional informado: ${brl.format(fixedValue)}.',
+      'Aumento total: aumento percentual + valor fixo = ${brl.format(totalIncrease)}.',
+      'Novo salário: salário atual + aumento total = ${brl.format(newSalary)}.',
+      'Percentual efetivo do reajuste considerando percentual e valor fixo: ${effectivePercent.toStringAsFixed(2)}%.',
+    ];
+  }
+
   Widget _buildCalculators() {
     return SingleChildScrollView(
       child: Column(
@@ -1168,12 +1398,24 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                 selected: calcTab == CalcTab.termination,
                 onSelected: (_) => _setCalcTab(CalcTab.termination),
               ),
+              ChoiceChip(
+                label: const Text('FGTS'),
+                selected: calcTab == CalcTab.fgts,
+                onSelected: (_) => _setCalcTab(CalcTab.fgts),
+              ),
+              ChoiceChip(
+                label: const Text('Reajuste'),
+                selected: calcTab == CalcTab.salaryAdjustment,
+                onSelected: (_) => _setCalcTab(CalcTab.salaryAdjustment),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           if (calcTab == CalcTab.salary) _buildSalary(),
           if (calcTab == CalcTab.vacation) _buildVacation(),
           if (calcTab == CalcTab.termination) _buildTermination(),
+          if (calcTab == CalcTab.fgts) _buildFgts(),
+          if (calcTab == CalcTab.salaryAdjustment) _buildSalaryAdjustment(),
         ],
       ),
     );
@@ -1195,6 +1437,34 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
             _saveString('salary_input', v);
           },
         ),
+        _textField(
+          'Dependentes',
+          salaryDependentsInput,
+          'salary_dependents_input',
+          (v) => salaryDependentsInput = v,
+          integer: true,
+        ),
+        _textField(
+          'Horas extras 50% (valor mensal)',
+          salaryOvertime50Input,
+          'salary_ot50_input',
+          (v) => salaryOvertime50Input = v,
+          money: true,
+        ),
+        _textField(
+          'Horas extras 100% (valor mensal)',
+          salaryOvertime100Input,
+          'salary_ot100_input',
+          (v) => salaryOvertime100Input = v,
+          money: true,
+        ),
+        _textField(
+          'Desconto de plano de saúde',
+          salaryHealthDiscountInput,
+          'salary_health_discount_input',
+          (v) => salaryHealthDiscountInput = v,
+          money: true,
+        ),
         SwitchListTile(
           title: const Text('Aplicar desconto simplificado do IRRF'),
           value: salarySimplified,
@@ -1211,9 +1481,22 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           Text(salaryError!, style: const TextStyle(color: Colors.red)),
         if (salaryResult != null)
           _buildResultCard([
-            Text('Bruto: ${brl.format(salaryResult!['gross'])}'),
+            Text('Salário base: ${brl.format(salaryResult!['baseSalary'])}'),
+            Text(
+              'Horas extras 50%: ${brl.format(salaryResult!['overtime50'])}',
+            ),
+            Text(
+              'Horas extras 100%: ${brl.format(salaryResult!['overtime100'])}',
+            ),
+            Text('Bruto tributável: ${brl.format(salaryResult!['gross'])}'),
+            Text(
+              'Dependentes: ${_mapDouble(salaryResult!, 'dependents').toInt()}',
+            ),
             Text('INSS: ${brl.format(salaryResult!['inss'])}'),
             Text('IRRF: ${brl.format(salaryResult!['irrf'])}'),
+            Text(
+              'Plano de saúde: ${brl.format(salaryResult!['healthDiscount'])}',
+            ),
             Text(
               'Líquido: ${brl.format(salaryResult!['net'])}',
               style: const TextStyle(fontWeight: FontWeight.bold),
@@ -1507,6 +1790,160 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                           context: buttonContext,
                           title: 'Como calculamos a rescisao',
                           steps: _terminationExplanationSteps(),
+                        ),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Como calculamos'),
+                  ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildFgts() {
+    final includeFine = _parseIntOr(fgtsIncludeFineInput, 0) == 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _textField(
+          'Salário bruto mensal',
+          fgtsSalaryInput,
+          'fgts_salary_input',
+          (v) => fgtsSalaryInput = v,
+          money: true,
+        ),
+        _textField(
+          'Quantidade de meses',
+          fgtsMonthsInput,
+          'fgts_months_input',
+          (v) => fgtsMonthsInput = v,
+          integer: true,
+        ),
+        _textField(
+          'Saldo atual do FGTS',
+          fgtsCurrentBalanceInput,
+          'fgts_current_balance_input',
+          (v) => fgtsCurrentBalanceInput = v,
+          money: true,
+        ),
+        SwitchListTile(
+          title: const Text('Incluir estimativa de multa de 40%'),
+          subtitle: const Text('Usado em demissão sem justa causa.'),
+          value: includeFine,
+          onChanged: (v) {
+            setState(() => fgtsIncludeFineInput = v ? '1' : '0');
+            _saveString('fgts_include_fine_input', fgtsIncludeFineInput);
+          },
+        ),
+        FilledButton(
+          onPressed: _calculateFgts,
+          child: const Text('Calcular FGTS'),
+        ),
+        if (fgtsError != null)
+          Text(fgtsError!, style: const TextStyle(color: Colors.red)),
+        if (fgtsResult != null)
+          _buildResultCard([
+            Text(
+              'Depósito mensal (8%): ${brl.format(fgtsResult!['monthlyDeposit'])}',
+            ),
+            Text(
+              'Depósitos no período: ${brl.format(fgtsResult!['periodDeposit'])}',
+            ),
+            Text(
+              'Saldo projetado: ${brl.format(fgtsResult!['projectedBalance'])}',
+            ),
+            Text('Multa 40%: ${brl.format(fgtsResult!['terminationFine'])}'),
+            Text(
+              'Total estimado: ${brl.format(fgtsResult!['total'])}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ]),
+        if (fgtsResult != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder:
+                  (buttonContext) => OutlinedButton.icon(
+                    onPressed:
+                        () => _showCalculationExplanation(
+                          context: buttonContext,
+                          title: 'Como calculamos o FGTS',
+                          steps: _fgtsExplanationSteps(),
+                        ),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('Como calculamos'),
+                  ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSalaryAdjustment() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _textField(
+          'Salário atual',
+          adjustmentCurrentSalaryInput,
+          'adjustment_current_salary_input',
+          (v) => adjustmentCurrentSalaryInput = v,
+          money: true,
+        ),
+        _textField(
+          'Percentual de reajuste (%)',
+          adjustmentPercentInput,
+          'adjustment_percent_input',
+          (v) => adjustmentPercentInput = v,
+          money: true,
+        ),
+        _textField(
+          'Valor fixo adicional',
+          adjustmentFixedValueInput,
+          'adjustment_fixed_value_input',
+          (v) => adjustmentFixedValueInput = v,
+          money: true,
+        ),
+        FilledButton(
+          onPressed: _calculateSalaryAdjustment,
+          child: const Text('Calcular reajuste'),
+        ),
+        if (adjustmentError != null)
+          Text(adjustmentError!, style: const TextStyle(color: Colors.red)),
+        if (adjustmentResult != null)
+          _buildResultCard([
+            Text(
+              'Salário atual: ${brl.format(adjustmentResult!['currentSalary'])}',
+            ),
+            Text(
+              'Aumento por percentual: ${brl.format(adjustmentResult!['percentIncrease'])}',
+            ),
+            Text(
+              'Valor fixo adicional: ${brl.format(adjustmentResult!['fixedValue'])}',
+            ),
+            Text(
+              'Aumento total: ${brl.format(adjustmentResult!['totalIncrease'])}',
+            ),
+            Text(
+              'Percentual efetivo: ${_mapDouble(adjustmentResult!, 'effectivePercent').toStringAsFixed(2)}%',
+            ),
+            Text(
+              'Novo salário: ${brl.format(adjustmentResult!['newSalary'])}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ]),
+        if (adjustmentResult != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder:
+                  (buttonContext) => OutlinedButton.icon(
+                    onPressed:
+                        () => _showCalculationExplanation(
+                          context: buttonContext,
+                          title: 'Como calculamos o reajuste',
+                          steps: _salaryAdjustmentExplanationSteps(),
                         ),
                     icon: const Icon(Icons.help_outline),
                     label: const Text('Como calculamos'),
