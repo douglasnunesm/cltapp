@@ -1,5 +1,8 @@
 name: Android Release and Play Publish
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches:
