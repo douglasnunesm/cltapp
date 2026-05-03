@@ -11,6 +11,60 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const String admobBannerUnitId = 'ca-app-pub-5979475974508131/7828121452';
+const String governmentDisclaimer =
+    'Este app é independente, não é oficial e não representa o Governo Federal, '
+    'a Receita Federal, o INSS, a Caixa Econômica Federal, o Ministério do Trabalho '
+    'e Emprego ou qualquer entidade governamental. Os cálculos são estimativas '
+    'informativas. Sempre consulte as fontes oficiais e as regulamentações vigentes '
+    'para confirmar regras, valores, exceções e atualizações.';
+const List<OfficialSource> officialSources = [
+  OfficialSource(
+    title: 'CLT - Decreto-Lei nº 5.452/1943',
+    description:
+        'Base legal geral para férias, jornada, horas extras, rescisão e demais regras trabalhistas.',
+    url: 'https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm',
+  ),
+  OfficialSource(
+    title: 'Tabela de contribuição mensal do INSS',
+    description:
+        'Faixas e alíquotas progressivas de contribuição previdenciária para empregados.',
+    url:
+        'https://www.gov.br/inss/pt-br/direitos-e-deveres/inscricao-e-contribuicao/tabela-de-contribuicao-mensal',
+  ),
+  OfficialSource(
+    title: 'Tabela mensal do IRPF/IRRF',
+    description:
+        'Tabela de incidência mensal, alíquotas e deduções da Receita Federal.',
+    url:
+        'https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026',
+  ),
+  OfficialSource(
+    title: 'FGTS - Ministério do Trabalho e Emprego',
+    description:
+        'Informações oficiais sobre FGTS e depósito mensal em regra de 8% do salário.',
+    url:
+        'https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/inspecao-do-trabalho/areas-de-atuacao/fgts-fundo-de-garantia-do-tempo-de-servico',
+  ),
+  OfficialSource(
+    title: 'Direitos trabalhistas - Ministério do Trabalho e Emprego',
+    description:
+        'Referências sobre salário, férias, 13º, jornada e horas extras.',
+    url:
+        'https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/inspecao-do-trabalho/trabalho-sustentavel/trabalhadores-e-trabalhadoras',
+  ),
+];
+
+class OfficialSource {
+  const OfficialSource({
+    required this.title,
+    required this.description,
+    required this.url,
+  });
+
+  final String title;
+  final String description;
+  final String url;
+}
 
 enum AppSection { calculators, history, settings }
 
@@ -1938,7 +1992,11 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children:
-                    steps
+                    [
+                          ...steps,
+                          'Fontes principais: CLT (Decreto-Lei nº 5.452/1943), INSS, Receita Federal e Ministério do Trabalho e Emprego.',
+                          governmentDisclaimer,
+                        ]
                         .asMap()
                         .entries
                         .map(
@@ -2246,7 +2304,10 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
                           style: Theme.of(
                             context,
                           ).textTheme.titleLarge?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface,
+                            color:
+                                darkMode
+                                    ? const Color(0xFFF4F8FF)
+                                    : Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -3107,19 +3168,127 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   Widget _buildSettings() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SwitchListTile(
-          title: const Text('Modo escuro'),
-          value: darkMode,
-          onChanged: (v) {
-            setState(() => darkMode = v);
-            _saveBool('dark_mode', v);
-            _logEvent('toggle_dark_mode', {'enabled': v});
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            child: SwitchListTile(
+              title: const Text('Modo escuro'),
+              value: darkMode,
+              onChanged: (v) {
+                setState(() => darkMode = v);
+                _saveBool('dark_mode', v);
+                _logEvent('toggle_dark_mode', {'enabled': v});
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildOfficialSourcesSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfficialSourcesSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isDark = darkMode || Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? const Color(0xFFF4F8FF) : colorScheme.onSurface;
+    final bodyColor =
+        isDark ? const Color(0xFFD7E1F0) : colorScheme.onSurfaceVariant;
+
+    return Card(
+      color: isDark ? const Color(0xFF172235) : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.verified_outlined, color: colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Fontes oficiais e aviso legal',
+                    style: textTheme.titleLarge?.copyWith(
+                      color: titleColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              governmentDisclaimer,
+              style: textTheme.bodyMedium?.copyWith(
+                color: bodyColor,
+                height: 1.42,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Links principais usados como referência:',
+              style: textTheme.titleSmall?.copyWith(
+                color: titleColor,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...officialSources.map(_buildOfficialSourceTile),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOfficialSourceTile(OfficialSource source) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = darkMode || Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark ? const Color(0xFFF4F8FF) : colorScheme.onSurface;
+    final bodyColor =
+        isDark ? const Color(0xFFD7E1F0) : colorScheme.onSurfaceVariant;
+    final tileColor =
+        isDark
+            ? const Color(0xFF223049)
+            : colorScheme.surfaceContainerHighest.withOpacity(0.45);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: tileColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? const Color(0xFF405679) : colorScheme.outlineVariant,
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        leading: Icon(Icons.link, color: colorScheme.primary),
+        title: Text(
+          source.title,
+          style: TextStyle(color: titleColor, fontWeight: FontWeight.w800),
+        ),
+        subtitle: SelectableText(
+          '${source.description}\n${source.url}',
+          style: TextStyle(color: bodyColor, height: 1.32),
+        ),
+        trailing: IconButton(
+          tooltip: 'Copiar link',
+          icon: Icon(Icons.copy, color: colorScheme.primary),
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: source.url));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Link copiado para a área de transferência.'),
+              ),
+            );
           },
         ),
-      ],
+      ),
     );
   }
 }

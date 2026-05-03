@@ -1,0 +1,37 @@
+﻿AVISO IMPORTANTE: este app é independente, não é oficial e não representa o Governo Federal, a Receita Federal, o INSS, a Caixa Econômica Federal, o Ministério do Trabalho e Emprego ou qualquer entidade governamental. Os cálculos são estimativas informativas baseadas em fontes públicas oficiais. Sempre consulte as fontes oficiais e as regulamentações vigentes para confirmar regras, valores, exceções e atualizações.
+
+CLT Brasil é uma calculadora trabalhista criada para ajudar trabalhadores brasileiros a simularem valores importantes do regime CLT de forma simples, rápida e organizada.
+
+Com o app, você pode estimar salário líquido, férias, rescisão, FGTS, reajuste salarial, valor da hora trabalhada e comparar propostas CLT x PJ.
+
+Funcionalidades principais:
+
+- Cálculo de salário líquido com INSS, IRRF, dependentes, horas extras 50%, horas extras 100% e descontos como plano de saúde.
+- Cálculo de férias com quantidade de dias, adicional de 1/3, média de horas extras, dependentes e opção de adiantamento do 13º.
+- Cálculo de rescisão com saldo de salário, aviso prévio, 13º proporcional, férias vencidas, férias proporcionais, FGTS, INSS e IRRF.
+- Cálculo de FGTS com projeção por meses e estimativa de multa de 40% quando aplicável.
+- Cálculo de reajuste salarial por percentual e/ou valor fixo.
+- Cálculo do valor da hora comum, hora extra 50% e hora extra 100%.
+- Comparação CLT x PJ para estimar qual modelo pode ser mais vantajoso.
+- Histórico local dos cálculos realizados.
+- Explicação das etapas de cálculo.
+- Modo escuro.
+
+Os resultados são estimativas para fins informativos e podem variar conforme legislação vigente, acordos coletivos, benefícios, descontos, regime tributário e regras específicas de cada contrato. O app não substitui orientação contábil, jurídica ou trabalhista profissional.
+
+Fontes oficiais utilizadas como referência:
+
+CLT - Decreto-Lei nº 5.452/1943:
+https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm
+
+Tabela de contribuição mensal do INSS:
+https://www.gov.br/inss/pt-br/direitos-e-deveres/inscricao-e-contribuicao/tabela-de-contribuicao-mensal
+
+Tabela mensal do IRPF/IRRF:
+https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026
+
+FGTS - Ministério do Trabalho e Emprego:
+https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/inspecao-do-trabalho/areas-de-atuacao/fgts-fundo-de-garantia-do-tempo-de-servico
+
+Direitos trabalhistas - Ministério do Trabalho e Emprego:
+https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/inspecao-do-trabalho/trabalho-sustentavel/trabalhadores-e-trabalhadoras
