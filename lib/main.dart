@@ -128,12 +128,12 @@ class PtBrCurrencyInputFormatter extends TextInputFormatter {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await _initializeTelemetry();
   runApp(const CltFlutterApp());
+  _initializeTelemetry();
 }
 
 Future<void> _initializeTelemetry() async {
-  if (!kIsWeb) {
+  if (!kIsWeb && !kDebugMode) {
     await MobileAds.instance.initialize();
   }
 
@@ -353,6 +353,7 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
 
   void _loadBanner() {
     if (kIsWeb) return;
+    if (kDebugMode) return;
 
     final ad = BannerAd(
       adUnitId: admobBannerUnitId,
@@ -1319,22 +1320,60 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
 
   Widget? _buildBottomAdBar(BuildContext context) {
     final banner = _bannerAd;
-    if (banner == null || !_isBannerReady) return null;
 
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final bottomPadding = (bottomInset > 0 ? bottomInset : 12.0) + 8.0;
     final color = Theme.of(context).colorScheme.surface;
 
-    return Material(
-      color: color,
-      elevation: 6,
-      child: Padding(
-        padding: EdgeInsets.only(top: 8, bottom: bottomPadding),
-        child: Center(
-          child: SizedBox(
-            width: banner.size.width.toDouble(),
-            height: banner.size.height.toDouble(),
-            child: _buildBanner(),
+    if (kDebugMode) {
+      return SizedBox(
+        height: 50 + 8 + bottomPadding,
+        child: Material(
+          color: color,
+          elevation: 6,
+          child: Padding(
+            padding: EdgeInsets.only(top: 8, bottom: bottomPadding),
+            child: Center(
+              child: Container(
+                width: 320,
+                height: 50,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+                child: Text(
+                  'Publicidade',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (banner == null || !_isBannerReady) return null;
+
+    return SizedBox(
+      height: banner.size.height.toDouble() + 8 + bottomPadding,
+      child: Material(
+        color: color,
+        elevation: 6,
+        child: Padding(
+          padding: EdgeInsets.only(top: 8, bottom: bottomPadding),
+          child: Center(
+            child: SizedBox(
+              width: banner.size.width.toDouble(),
+              height: banner.size.height.toDouble(),
+              child: _buildBanner(),
+            ),
           ),
         ),
       ),
@@ -1493,15 +1532,90 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
 
   @override
   Widget build(BuildContext context) {
+    const brandBlue = Color(0xFF0B67C2);
+    const pageBackground = Color(0xFFF5F8FC);
+    const fieldFill = Color(0xFFF6FAFF);
+    final lightScheme = ColorScheme.fromSeed(seedColor: brandBlue);
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: brandBlue,
+      brightness: Brightness.dark,
+    );
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'CLT Brasil',
       themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: lightScheme,
+        scaffoldBackgroundColor: pageBackground,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: brandBlue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+            side: const BorderSide(color: Color(0xFFD9E5F2)),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: fieldFill,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFD9E5F2)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFD9E5F2)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: brandBlue, width: 1.6),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: brandBlue,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+        ),
+      ),
       darkTheme: ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
-        colorSchemeSeed: Colors.blue,
+        colorScheme: darkScheme,
+        scaffoldBackgroundColor: const Color(0xFF101722),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF171E29),
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+            side: const BorderSide(color: Color(0xFF2A3A50)),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF172131),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFF2A3A50)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFF7BB7FF), width: 1.6),
+          ),
+        ),
       ),
       home: LayoutBuilder(
         builder: (context, constraints) {
@@ -1550,16 +1664,57 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   Widget _buildResultCard(List<Widget> children) {
+    final accent = _calcAccentColor(calcTab);
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor =
+        isDark ? const Color(0xFF111A27) : colorScheme.surface;
+    final textColor = isDark ? const Color(0xFFEAF2FF) : colorScheme.onSurface;
+    final secondaryTextColor =
+        isDark ? const Color(0xFFC7D2E3) : colorScheme.onSurfaceVariant;
+
     return SizedBox(
       width: double.infinity,
-      child: Card(
+      child: Container(
         margin: const EdgeInsets.symmetric(vertical: 12),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: accent.withOpacity(isDark ? 0.42 : 0.22)),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withOpacity(isDark ? 0.18 : 0.10),
+              blurRadius: 24,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: _withVerticalSpacing(children, 6),
+            children: [
+              Container(height: 8, color: accent),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 15.5,
+                    height: 1.28,
+                  ),
+                  child: IconTheme.merge(
+                    data: IconThemeData(color: secondaryTextColor),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: _withVerticalSpacing(children, 7),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1578,11 +1733,16 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
   }
 
   Widget _primaryButton(String label, VoidCallback onPressed) {
+    final accent = _calcAccentColor(calcTab);
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 6),
       child: SizedBox(
         width: double.infinity,
         child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: accent,
+            foregroundColor: Colors.white,
+          ),
           onPressed: onPressed,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1590,6 +1750,173 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           ),
         ),
       ),
+    );
+  }
+
+  Color _calcAccentColor(CalcTab tab) {
+    switch (tab) {
+      case CalcTab.salary:
+        return const Color(0xFF0B67C2);
+      case CalcTab.vacation:
+        return const Color(0xFF1FA37A);
+      case CalcTab.termination:
+        return const Color(0xFF0E5E86);
+      case CalcTab.fgts:
+        return const Color(0xFF246B8F);
+      case CalcTab.salaryAdjustment:
+        return const Color(0xFF2F7D32);
+      case CalcTab.hourlyRate:
+        return const Color(0xFF6750A4);
+      case CalcTab.pjComparison:
+        return const Color(0xFF9A5B00);
+    }
+  }
+
+  String _calcTitle(CalcTab tab) {
+    switch (tab) {
+      case CalcTab.salary:
+        return 'Salário líquido';
+      case CalcTab.vacation:
+        return 'Férias';
+      case CalcTab.termination:
+        return 'Rescisão';
+      case CalcTab.fgts:
+        return 'FGTS';
+      case CalcTab.salaryAdjustment:
+        return 'Reajuste salarial';
+      case CalcTab.hourlyRate:
+        return 'Valor da hora';
+      case CalcTab.pjComparison:
+        return 'CLT x PJ';
+    }
+  }
+
+  String _calcSubtitle(CalcTab tab) {
+    switch (tab) {
+      case CalcTab.salary:
+        return 'INSS, IRRF, dependentes, horas extras e descontos.';
+      case CalcTab.vacation:
+        return 'Simule férias com 1/3, médias e adiantamento do 13º.';
+      case CalcTab.termination:
+        return 'Estime saldo, aviso, férias, 13º e multa do FGTS.';
+      case CalcTab.fgts:
+        return 'Projete depósitos mensais e multa de 40%.';
+      case CalcTab.salaryAdjustment:
+        return 'Veja o impacto de percentual e valor fixo no salário.';
+      case CalcTab.hourlyRate:
+        return 'Calcule hora comum, extra 50% e extra 100%.';
+      case CalcTab.pjComparison:
+        return 'Compare propostas e descubra equivalências CLT e PJ.';
+    }
+  }
+
+  IconData _calcIcon(CalcTab tab) {
+    switch (tab) {
+      case CalcTab.salary:
+        return Icons.payments_outlined;
+      case CalcTab.vacation:
+        return Icons.beach_access_outlined;
+      case CalcTab.termination:
+        return Icons.assignment_return_outlined;
+      case CalcTab.fgts:
+        return Icons.savings_outlined;
+      case CalcTab.salaryAdjustment:
+        return Icons.trending_up_outlined;
+      case CalcTab.hourlyRate:
+        return Icons.schedule_outlined;
+      case CalcTab.pjComparison:
+        return Icons.compare_arrows_outlined;
+    }
+  }
+
+  Widget _buildCalculatorHero() {
+    final accent = _calcAccentColor(calcTab);
+    final darkAccent = Color.fromARGB(
+      accent.alpha,
+      (accent.red * 0.72).round(),
+      (accent.green * 0.72).round(),
+      (accent.blue * 0.72).round(),
+    );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [accent, darkAccent],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withOpacity(0.22),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.94),
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Image.asset('assets/images/app_logo_1024.png'),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _calcTitle(calcTab),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _calcSubtitle(calcTab),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.88),
+                    fontSize: 14,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _calcChip(String label, CalcTab tab) {
+    final selected = calcTab == tab;
+    final accent = _calcAccentColor(tab);
+    return ChoiceChip(
+      avatar: Icon(
+        _calcIcon(tab),
+        size: 18,
+        color: selected ? Colors.white : accent,
+      ),
+      label: Text(label),
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : accent,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+      ),
+      selected: selected,
+      selectedColor: accent,
+      backgroundColor: Colors.white,
+      side: BorderSide(color: selected ? accent : accent.withOpacity(0.22)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      onSelected: (_) => _setCalcTab(tab),
     );
   }
 
@@ -1880,58 +2207,65 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
 
   Widget _buildCalculators() {
     return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildCalculatorHero(),
+          const SizedBox(height: 18),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              ChoiceChip(
-                label: const Text('Salário'),
-                selected: calcTab == CalcTab.salary,
-                onSelected: (_) => _setCalcTab(CalcTab.salary),
-              ),
-              ChoiceChip(
-                label: const Text('Férias'),
-                selected: calcTab == CalcTab.vacation,
-                onSelected: (_) => _setCalcTab(CalcTab.vacation),
-              ),
-              ChoiceChip(
-                label: const Text('Rescisão'),
-                selected: calcTab == CalcTab.termination,
-                onSelected: (_) => _setCalcTab(CalcTab.termination),
-              ),
-              ChoiceChip(
-                label: const Text('FGTS'),
-                selected: calcTab == CalcTab.fgts,
-                onSelected: (_) => _setCalcTab(CalcTab.fgts),
-              ),
-              ChoiceChip(
-                label: const Text('Reajuste'),
-                selected: calcTab == CalcTab.salaryAdjustment,
-                onSelected: (_) => _setCalcTab(CalcTab.salaryAdjustment),
-              ),
-              ChoiceChip(
-                label: const Text('Valor da hora'),
-                selected: calcTab == CalcTab.hourlyRate,
-                onSelected: (_) => _setCalcTab(CalcTab.hourlyRate),
-              ),
-              ChoiceChip(
-                label: const Text('CLT x PJ'),
-                selected: calcTab == CalcTab.pjComparison,
-                onSelected: (_) => _setCalcTab(CalcTab.pjComparison),
-              ),
+              _calcChip('Salário', CalcTab.salary),
+              _calcChip('Férias', CalcTab.vacation),
+              _calcChip('Rescisão', CalcTab.termination),
+              _calcChip('FGTS', CalcTab.fgts),
+              _calcChip('Reajuste', CalcTab.salaryAdjustment),
+              _calcChip('Valor da hora', CalcTab.hourlyRate),
+              _calcChip('CLT x PJ', CalcTab.pjComparison),
             ],
           ),
-          const SizedBox(height: 12),
-          if (calcTab == CalcTab.salary) _buildSalary(),
-          if (calcTab == CalcTab.vacation) _buildVacation(),
-          if (calcTab == CalcTab.termination) _buildTermination(),
-          if (calcTab == CalcTab.fgts) _buildFgts(),
-          if (calcTab == CalcTab.salaryAdjustment) _buildSalaryAdjustment(),
-          if (calcTab == CalcTab.hourlyRate) _buildHourlyRate(),
-          if (calcTab == CalcTab.pjComparison) _buildPjComparison(),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        _calcIcon(calcTab),
+                        color: _calcAccentColor(calcTab),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _calcTitle(calcTab),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (calcTab == CalcTab.salary) _buildSalary(),
+                  if (calcTab == CalcTab.vacation) _buildVacation(),
+                  if (calcTab == CalcTab.termination) _buildTermination(),
+                  if (calcTab == CalcTab.fgts) _buildFgts(),
+                  if (calcTab == CalcTab.salaryAdjustment)
+                    _buildSalaryAdjustment(),
+                  if (calcTab == CalcTab.hourlyRate) _buildHourlyRate(),
+                  if (calcTab == CalcTab.pjComparison) _buildPjComparison(),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1941,17 +2275,18 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextFormField(
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Salário bruto mensal',
-            hintText: 'Ex.: 3.500,00',
+        _fieldLabel('Salário bruto mensal'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextFormField(
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(hintText: 'Ex.: 3.500,00'),
+            initialValue: salaryInput,
+            onChanged: (v) {
+              salaryInput = v;
+              _saveString('salary_input', v);
+            },
           ),
-          initialValue: salaryInput,
-          onChanged: (v) {
-            salaryInput = v;
-            _saveString('salary_input', v);
-          },
         ),
         _textField(
           'Dependentes',
@@ -2044,14 +2379,17 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
       String key,
       void Function(String) setter,
     ) {
-      return TextFormField(
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(labelText: label),
-        initialValue: value,
-        onChanged: (v) {
-          setter(v);
-          _saveString(key, v);
-        },
+      return _labeledField(
+        label: label,
+        child: TextFormField(
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: 'Ex.: 3.500,00'),
+          initialValue: value,
+          onChanged: (v) {
+            setter(v);
+            _saveString(key, v);
+          },
+        ),
       );
     }
 
@@ -2064,17 +2402,18 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           'vac_salary_input',
           (v) => vacationSalaryInput = v,
         ),
-        TextFormField(
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(
-            labelText: 'Quantidade de dias de férias (1 a 30)',
+        _labeledField(
+          label: 'Quantidade de dias de férias (1 a 30)',
+          child: TextFormField(
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(hintText: 'Ex.: 30'),
+            initialValue: vacationDaysInput,
+            onChanged: (v) {
+              vacationDaysInput = v;
+              _saveString('vac_days_input', v);
+            },
           ),
-          initialValue: vacationDaysInput,
-          onChanged: (v) {
-            vacationDaysInput = v;
-            _saveString('vac_days_input', v);
-          },
         ),
         moneyField(
           'Média mensal de horas extras (R\$)',
@@ -2082,15 +2421,18 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
           'vac_overtime_input',
           (v) => vacationOvertimeInput = v,
         ),
-        TextFormField(
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(labelText: 'Dependentes'),
-          initialValue: vacationDependentsInput,
-          onChanged: (v) {
-            vacationDependentsInput = v;
-            _saveString('vac_dependents_input', v);
-          },
+        _labeledField(
+          label: 'Dependentes',
+          child: TextFormField(
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(hintText: 'Ex.: 0'),
+            initialValue: vacationDependentsInput,
+            onChanged: (v) {
+              vacationDependentsInput = v;
+              _saveString('vac_dependents_input', v);
+            },
+          ),
         ),
         SwitchListTile(
           title: const Text('Adiantar 1ª parcela do 13º'),
@@ -2665,6 +3007,28 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
     );
   }
 
+  Widget _fieldLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 6),
+      child: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _labeledField({required String label, required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [_fieldLabel(label), child],
+      ),
+    );
+  }
+
   Widget _textField(
     String label,
     String value,
@@ -2682,12 +3046,12 @@ class _CltFlutterAppState extends State<CltFlutterApp> {
             ? <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly]
             : const <TextInputFormatter>[];
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+    return _labeledField(
+      label: label,
       child: TextFormField(
         keyboardType: keyboardType,
         inputFormatters: formatters,
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(hintText: money ? 'Ex.: 0,00' : 'Ex.: 0'),
         initialValue: value,
         onChanged: (v) {
           setter(v);
