@@ -157,3 +157,4 @@ jobs:
           whatsNewDirectory: distribution/whatsnew
           tracks: internal
           status: draft
+          changesNotSentForReview: true
